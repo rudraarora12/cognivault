@@ -1,0 +1,21 @@
+# dependencies
+node_modules/
+dist/
+.env
+
+# build files
+*.log
+.DS_Store
+.vscode/
+*.local
+
+# system files
+Thumbs.db
+
+# environment or secret config
+.env.local
+.env.development
+.env.production
+
+# optional: editor settings
+*.idea/
