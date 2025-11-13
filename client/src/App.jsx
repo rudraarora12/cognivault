@@ -13,6 +13,7 @@ import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import Dashboard from "./pages/Dashboard";
 import KnowledgeGraph from "./components/KnowledgeGraph";
+import IncognitoVault from "./pages/IncognitoVault";
 import "./styles/global.css";
 
 function App() {
@@ -48,23 +49,23 @@ function App() {
           <div className="route-container">
             <AnimatePresence mode="wait">
               <Routes location={location} key={location.pathname}>
-              <Route path="/" element={<LandingPage />} />
-              <Route
-                path="/login"
-                element={
-                  <AuthRedirect>
-                    <Login />
-                  </AuthRedirect>
-                }
-              />
-              <Route
-                path="/signup"
-                element={
-                  <AuthRedirect>
-                    <Signup />
-                  </AuthRedirect>
-                }
-              />
+                <Route path="/" element={<LandingPage />} />
+                <Route
+                  path="/login"
+                  element={
+                    <AuthRedirect>
+                      <Login />
+                    </AuthRedirect>
+                  }
+                />
+                <Route
+                  path="/signup"
+                  element={
+                    <AuthRedirect>
+                      <Signup />
+                    </AuthRedirect>
+                  }
+                />
                 <Route
                   path="/dashboard"
                   element={
@@ -78,6 +79,14 @@ function App() {
                   element={
                     <ProtectedRoute>
                       <KnowledgeGraph />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/incognito"
+                  element={
+                    <ProtectedRoute>
+                      <IncognitoVault />
                     </ProtectedRoute>
                   }
                 />

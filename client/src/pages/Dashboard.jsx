@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import "../styles/dashboard.css";
 
-const sidebarItems = ["Memories", "Chat", "Graph", "Insights"];
+const sidebarItems = ["Memories", "Chat", "Graph", "Insights", "Incognito Vault"];
 
 const cards = [
   { title: "Recent Notes", desc: "Upload files to populate your memories.", icon: "📝" },
@@ -22,6 +22,8 @@ export default function Dashboard() {
     setActiveItem(item);
     if (item === "Graph") {
       navigate("/knowledge-graph");
+    } else if (item === "Incognito Vault") {
+      navigate("/incognito");
     }
   };
 
