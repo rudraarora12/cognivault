@@ -1,13 +1,13 @@
 import { getDB } from '../config/mongodb.js';
 import { getDriver } from '../config/neo4j.js';
 import { getPineconeIndex } from '../config/pinecone.js';
-import { generateMockEmbedding } from './embedding.service.js';
+import { generateEmbedding } from './gemini.service.js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const genAI = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
 
-// Get chronological learning events
+// Get chronological learning events from source_files and chunks
 export async function getTimelineEvents(userId) {
   console.log(`[Timeline] Fetching events for user: ${userId}`);
   
@@ -19,22 +19,38 @@ export async function getTimelineEvents(userId) {
       return [];
     }
     
+    // Get all chunks sorted by creation date
     const chunks = await db.collection('chunks')
       .find({ user_id: userId })
       .sort({ created_at: 1 })
       .toArray();
     
-    console.log(`[Timeline] Found ${chunks.length} chunks for user ${userId}`);
+    // Get source files for additional metadata
+    const sourceFiles = await db.collection('source_files')
+      .find({ user_id: userId })
+      .toArray();
     
-    const events = chunks.map(chunk => ({
-      file_id: chunk.file_id || 'direct_input',
-      user_id: chunk.user_id,
-      timestamp: chunk.created_at,
-      tags: chunk.tags || [],
-      summary: chunk.summary || '',
-      text_snippet: chunk.chunk_text ? chunk.chunk_text.split('\n').slice(0, 2).join(' ').substring(0, 200) : '',
-      chunk_id: chunk.chunk_id
-    }));
+    const fileMap = new Map();
+    sourceFiles.forEach(file => {
+      fileMap.set(file.file_id, file);
+    });
+    
+    console.log(`[Timeline] Found ${chunks.length} chunks and ${sourceFiles.length} source files for user ${userId}`);
+    
+    const events = chunks.map(chunk => {
+      const sourceFile = fileMap.get(chunk.file_id);
+      return {
+        file_id: chunk.file_id || 'direct_input',
+        user_id: chunk.user_id,
+        timestamp: chunk.created_at,
+        tags: chunk.tags || [],
+        summary: chunk.summary || '',
+        text_snippet: chunk.chunk_text ? chunk.chunk_text.split('\n').slice(0, 2).join(' ').substring(0, 200) : '',
+        chunk_id: chunk.chunk_id,
+        file_name: sourceFile?.file_name || null,
+        document_type: sourceFile?.document_analysis?.document_type || null
+      };
+    });
     
     return events.length > 0 ? events : [];
   } catch (error) {
@@ -88,7 +104,7 @@ export async function getTopicSpikes(userId) {
   }
 }
 
-// Get emotion trend over time
+// Get emotion trend over time using stored sentiment from document_analysis
 export async function getEmotionTrend(userId) {
   console.log(`[Timeline] Fetching emotion trend for user: ${userId}`);
   
@@ -100,26 +116,64 @@ export async function getEmotionTrend(userId) {
       return [];
     }
     
-    const chunks = await db.collection('chunks')
-      .find({ user_id: userId })
-      .sort({ created_at: 1 })
+    // Get source files with document_analysis (contains sentiment)
+    const sourceFiles = await db.collection('source_files')
+      .find({ 
+        user_id: userId,
+        'document_analysis.sentiment': { $exists: true }
+      })
+      .sort({ upload_date: 1 })
       .toArray();
     
-    console.log(`[Timeline] Analyzing sentiment for ${chunks.length} chunks`);
+    console.log(`[Timeline] Found ${sourceFiles.length} source files with sentiment data`);
     
     const emotionData = [];
     
-    // Process in batches to avoid overwhelming the API
-    const batchSize = 10;
-    for (let i = 0; i < chunks.length; i += batchSize) {
-      const batch = chunks.slice(i, i + batchSize);
+    // Use stored sentiment from document_analysis
+    sourceFiles.forEach(file => {
+      if (!file.upload_date || !file.document_analysis) return;
       
-      await Promise.all(batch.map(async (chunk) => {
-        if (!chunk.created_at || !chunk.chunk_text) return;
+      const sentiment = file.document_analysis.sentiment || 'neutral';
+      
+      // Map sentiment to standard format
+      let sentimentLabel = 'neutral';
+      let sentimentScore = 0.5;
+      
+      if (typeof sentiment === 'string') {
+        const lowerSentiment = sentiment.toLowerCase();
+        if (lowerSentiment.includes('positive') || lowerSentiment.includes('analytical') || lowerSentiment.includes('informative')) {
+          sentimentLabel = 'positive';
+          sentimentScore = 0.7;
+        } else if (lowerSentiment.includes('negative')) {
+          sentimentLabel = 'negative';
+          sentimentScore = 0.3;
+        } else {
+          sentimentLabel = 'neutral';
+          sentimentScore = 0.5;
+        }
+      }
+      
+      emotionData.push({
+        date: file.upload_date,
+        sentiment: sentimentLabel,
+        score: sentimentScore
+      });
+    });
+    
+    // If no source files with sentiment, try to get from chunks (fallback)
+    if (emotionData.length === 0) {
+      console.log('[Timeline] No source file sentiment, analyzing chunks as fallback');
+      const chunks = await db.collection('chunks')
+        .find({ user_id: userId })
+        .sort({ created_at: 1 })
+        .limit(50) // Limit to avoid too many API calls
+        .toArray();
+      
+      for (const chunk of chunks) {
+        if (!chunk.created_at || !chunk.chunk_text) continue;
         
         try {
           const sentiment = await analyzeSentiment(chunk.chunk_text, chunk.summary);
-          
           emotionData.push({
             date: chunk.created_at,
             sentiment: sentiment.label,
@@ -127,14 +181,13 @@ export async function getEmotionTrend(userId) {
           });
         } catch (error) {
           console.warn(`[Timeline] Error analyzing sentiment for chunk ${chunk.chunk_id}:`, error.message);
-          // Add fallback neutral sentiment
           emotionData.push({
             date: chunk.created_at,
             sentiment: 'neutral',
             score: 0.5
           });
         }
-      }));
+      }
     }
     
     console.log(`[Timeline] Generated ${emotionData.length} emotion data points`);
@@ -197,96 +250,172 @@ Text: ${content.substring(0, 500)}`;
   }
 }
 
-// Get knowledge evolution graph
+// Get knowledge evolution graph using Neo4j relationships
 export async function getKnowledgeEvolution(userId) {
   console.log(`[Timeline] Fetching knowledge evolution for user: ${userId}`);
   
   try {
     const db = getDB();
+    const driver = getDriver();
     
     if (!db) {
       console.warn('[Timeline] MongoDB not connected, returning empty knowledge evolution');
       return { nodes: [], edges: [], newBranches: [] };
     }
     
-    let index;
-    try {
-      index = getPineconeIndex();
-      console.log('[Timeline] Pinecone index available');
-    } catch (error) {
-      console.warn('[Timeline] Pinecone not available, continuing without it');
+    // Try to get data from Neo4j first (more accurate relationships)
+    let nodes = [];
+    let edges = [];
+    let newBranches = [];
+    
+    if (driver) {
+      try {
+        const session = driver.session();
+        
+        // Get Concept nodes (topics) from Neo4j
+        // Note: Concepts are shared but we filter by user's memories
+        const conceptResult = await session.run(
+          `MATCH (m:Memory)-[:TAGGED_WITH]->(c:Concept)
+           WHERE m.user_id = $userId
+           RETURN DISTINCT c.name as name, c.id as id
+           ORDER BY c.name`,
+          { userId }
+        );
+        
+        const conceptMap = new Map();
+        conceptResult.records.forEach((record, index) => {
+          const name = record.get('name');
+          const id = record.get('id') || `concept_${index}`;
+          conceptMap.set(name.toLowerCase(), { id, name, index });
+        });
+        
+        // Create nodes from concepts
+        nodes = Array.from(conceptMap.values()).map((concept, idx) => ({
+          id: concept.id || `topic_${idx}`,
+          label: concept.name,
+          type: 'topic',
+          count: 1 // Will be updated from MongoDB if needed
+        }));
+        
+        // Get relationships between concepts through memories
+        const relationshipResult = await session.run(
+          `MATCH (m1:Memory)-[:TAGGED_WITH]->(c1:Concept),
+                 (m2:Memory)-[:TAGGED_WITH]->(c2:Concept)
+           WHERE m1.user_id = $userId AND m2.user_id = $userId
+             AND m1.id <> m2.id
+             AND c1.name <> c2.name
+           WITH c1, c2, count(*) as cooccurrence
+           WHERE cooccurrence > 0
+           RETURN c1.name as source, c2.name as target, cooccurrence
+           ORDER BY cooccurrence DESC
+           LIMIT 50`,
+          { userId }
+        );
+        
+        const edgeMap = new Map();
+        relationshipResult.records.forEach(record => {
+          const source = record.get('source');
+          const target = record.get('target');
+          const weight = record.get('cooccurrence').toNumber();
+          const edgeKey = `${source.toLowerCase()}_${target.toLowerCase()}`;
+          
+          if (!edgeMap.has(edgeKey)) {
+            const sourceConcept = conceptMap.get(source.toLowerCase());
+            const targetConcept = conceptMap.get(target.toLowerCase());
+            
+            if (sourceConcept && targetConcept) {
+              edges.push({
+                id: `edge_${sourceConcept.id}_${targetConcept.id}`,
+                source: sourceConcept.id,
+                target: targetConcept.id,
+                weight: weight,
+                type: 'related'
+              });
+              edgeMap.set(edgeKey, true);
+            }
+          }
+        });
+        
+        await session.close();
+        console.log(`[Timeline] Neo4j: ${nodes.length} concepts, ${edges.length} relationships`);
+      } catch (neo4jError) {
+        console.warn('[Timeline] Neo4j query failed, falling back to MongoDB:', neo4jError.message);
+      }
     }
     
+    // Fallback to MongoDB if Neo4j data is insufficient
+    if (nodes.length === 0) {
+      console.log('[Timeline] Using MongoDB fallback for knowledge evolution');
+      const chunks = await db.collection('chunks')
+        .find({ user_id: userId })
+        .sort({ created_at: 1 })
+        .toArray();
+      
+      if (chunks.length === 0) {
+        return { nodes: [], edges: [], newBranches: [] };
+      }
+      
+      // Extract unique topics from tags
+      const topicSet = new Set();
+      const topicToChunks = new Map();
+      
+      chunks.forEach(chunk => {
+        if (chunk.tags && Array.isArray(chunk.tags)) {
+          chunk.tags.forEach(tag => {
+            const normalizedTag = tag.toLowerCase().trim();
+            topicSet.add(normalizedTag);
+            
+            if (!topicToChunks.has(normalizedTag)) {
+              topicToChunks.set(normalizedTag, []);
+            }
+            topicToChunks.get(normalizedTag).push(chunk);
+          });
+        }
+      });
+      
+      // Create nodes for topics
+      nodes = Array.from(topicSet).map((topic, index) => ({
+        id: `topic_${index}`,
+        label: topic,
+        type: 'topic',
+        count: topicToChunks.get(topic).length,
+        firstSeen: topicToChunks.get(topic)[0].created_at
+      }));
+      
+      // Create edges based on co-occurrence
+      const topicArray = Array.from(topicSet);
+      
+      for (let i = 0; i < topicArray.length; i++) {
+        for (let j = i + 1; j < topicArray.length; j++) {
+          const topic1 = topicArray[i];
+          const topic2 = topicArray[j];
+          
+          const chunks1 = topicToChunks.get(topic1);
+          const chunks2 = topicToChunks.get(topic2);
+          const coOccurrence = chunks1.filter(c => 
+            chunks2.some(c2 => c.chunk_id === c2.chunk_id)
+          ).length;
+          
+          if (coOccurrence > 0) {
+            edges.push({
+              id: `edge_${i}_${j}`,
+              source: `topic_${i}`,
+              target: `topic_${j}`,
+              weight: coOccurrence,
+              type: 'related'
+            });
+          }
+        }
+      }
+    }
+    
+    // Detect new branches from chunks
     const chunks = await db.collection('chunks')
       .find({ user_id: userId })
       .sort({ created_at: 1 })
       .toArray();
     
-    console.log(`[Timeline] Processing ${chunks.length} chunks for knowledge evolution`);
-    
-    if (chunks.length === 0) {
-      return { nodes: [], edges: [], newBranches: [] };
-    }
-    
-    // Extract unique topics from tags
-    const topicSet = new Set();
-    const topicToChunks = new Map();
-    
-    chunks.forEach(chunk => {
-      if (chunk.tags && Array.isArray(chunk.tags)) {
-        chunk.tags.forEach(tag => {
-          const normalizedTag = tag.toLowerCase().trim();
-          topicSet.add(normalizedTag);
-          
-          if (!topicToChunks.has(normalizedTag)) {
-            topicToChunks.set(normalizedTag, []);
-          }
-          topicToChunks.get(normalizedTag).push(chunk);
-        });
-      }
-    });
-    
-    // Create nodes for topics
-    const nodes = Array.from(topicSet).map((topic, index) => ({
-      id: `topic_${index}`,
-      label: topic,
-      type: 'topic',
-      count: topicToChunks.get(topic).length,
-      firstSeen: topicToChunks.get(topic)[0].created_at
-    }));
-    
-    // Create edges based on co-occurrence
-    const edges = [];
-    const topicArray = Array.from(topicSet);
-    
-    for (let i = 0; i < topicArray.length; i++) {
-      for (let j = i + 1; j < topicArray.length; j++) {
-        const topic1 = topicArray[i];
-        const topic2 = topicArray[j];
-        
-        // Count how many chunks have both topics
-        const chunks1 = topicToChunks.get(topic1);
-        const chunks2 = topicToChunks.get(topic2);
-        const coOccurrence = chunks1.filter(c => 
-          chunks2.some(c2 => c.chunk_id === c2.chunk_id)
-        ).length;
-        
-        if (coOccurrence > 0) {
-          edges.push({
-            id: `edge_${i}_${j}`,
-            source: `topic_${i}`,
-            target: `topic_${j}`,
-            weight: coOccurrence,
-            type: 'related'
-          });
-        }
-      }
-    }
-    
-    // Detect new branches (topics that appeared later)
-    const newBranches = [];
     const topicFirstSeen = new Map();
-    
     chunks.forEach(chunk => {
       if (chunk.tags && Array.isArray(chunk.tags)) {
         chunk.tags.forEach(tag => {
@@ -298,7 +427,6 @@ export async function getKnowledgeEvolution(userId) {
       }
     });
     
-    // Find topics that appeared significantly later (new branches)
     const sortedTopics = Array.from(topicFirstSeen.entries())
       .sort((a, b) => new Date(a[1]) - new Date(b[1]));
     
@@ -367,93 +495,103 @@ export async function getBranchTriggers(userId) {
     const branchTriggers = [];
     const processedChunks = [];
     
+    // Track all seen tags for novelty detection
+    const allSeenTags = new Set();
+    
     for (let i = 0; i < chunks.length; i++) {
       const currentChunk = chunks[i];
       
       if (!currentChunk.chunk_text || !currentChunk.tags || currentChunk.tags.length === 0) continue;
       
       try {
-        // Get embedding for current chunk
-        const currentEmbedding = await generateMockEmbedding(currentChunk.chunk_text);
-        
-        // Try to use Pinecone for similarity search if available
         let maxSimilarity = 0;
+        const currentTags = currentChunk.tags.map(t => t.toLowerCase().trim());
         
-        if (index && currentChunk.chunk_id) {
+        // Check tag novelty first (faster than embedding comparison)
+        const newTags = currentTags.filter(tag => !allSeenTags.has(tag));
+        
+        // Use Pinecone for similarity search if available
+        if (index && currentChunk.pinecone_vector_id) {
           try {
-            // Query Pinecone for similar chunks
-            const queryResult = await index.query({
-              vector: currentEmbedding,
-              topK: 5,
-              filter: { user_id: userId }
-            });
+            // Fetch the vector from Pinecone
+            const fetchResult = await index.fetch([currentChunk.pinecone_vector_id]);
+            const currentVector = fetchResult.vectors[currentChunk.pinecone_vector_id]?.values;
             
-            // Find max similarity from previous chunks
-            for (const match of queryResult.matches || []) {
-              if (match.id !== currentChunk.chunk_id && match.score) {
-                // Check if this is a previous chunk
-                const isPrevious = processedChunks.some(pc => pc.chunk_id === match.id);
-                if (isPrevious) {
-                  maxSimilarity = Math.max(maxSimilarity, match.score);
+            if (currentVector) {
+              // Query Pinecone for similar chunks (only previous ones)
+              const previousVectorIds = processedChunks
+                .filter(pc => pc.pinecone_vector_id)
+                .map(pc => pc.pinecone_vector_id);
+              
+              if (previousVectorIds.length > 0) {
+                // Query for similar vectors
+                const queryResult = await index.query({
+                  vector: currentVector,
+                  topK: Math.min(10, previousVectorIds.length),
+                  filter: { 
+                    user_id: userId,
+                    chunk_id: { $in: previousVectorIds }
+                  }
+                });
+                
+                // Find max similarity from previous chunks
+                for (const match of queryResult.matches || []) {
+                  if (match.score) {
+                    maxSimilarity = Math.max(maxSimilarity, match.score);
+                  }
                 }
               }
             }
           } catch (pineconeError) {
-            console.warn(`[Timeline] Pinecone query failed, using local similarity:`, pineconeError.message);
-            // Fallback to local similarity calculation
-            for (const prevChunk of processedChunks) {
-              if (!prevChunk.embedding) {
-                prevChunk.embedding = await generateMockEmbedding(prevChunk.chunk_text);
-              }
-              const similarity = cosineSimilarity(currentEmbedding, prevChunk.embedding);
-              maxSimilarity = Math.max(maxSimilarity, similarity);
-            }
+            console.warn(`[Timeline] Pinecone query failed:`, pineconeError.message);
+            // Fallback: use tag-based similarity
+            maxSimilarity = 0.5; // Default to medium similarity if Pinecone fails
           }
         } else {
-          // Fallback: compare with previous chunks locally
-          for (const prevChunk of processedChunks) {
-            if (!prevChunk.embedding) {
-              prevChunk.embedding = await generateMockEmbedding(prevChunk.chunk_text);
+          // Fallback: tag-based similarity
+          const previousTags = new Set();
+          processedChunks.forEach(pc => {
+            if (pc.tags) {
+              pc.tags.forEach(t => previousTags.add(t.toLowerCase().trim()));
             }
-            const similarity = cosineSimilarity(currentEmbedding, prevChunk.embedding);
-            maxSimilarity = Math.max(maxSimilarity, similarity);
-          }
+          });
+          
+          const commonTags = currentTags.filter(t => previousTags.has(t));
+          maxSimilarity = commonTags.length > 0 ? 0.6 : 0.2; // Higher if tags overlap
         }
         
         // Check if this is a new branch (low similarity + new tags)
-        if (maxSimilarity < 0.4) {
-          const newTags = currentChunk.tags.filter(tag => {
-            const normalizedTag = tag.toLowerCase().trim();
-            return !processedChunks.some(pc => 
-              pc.tags && pc.tags.map(t => t.toLowerCase().trim()).includes(normalizedTag)
-            );
+        // Threshold: similarity < 0.4 OR (similarity < 0.6 AND new tags present)
+        const isNewBranch = (maxSimilarity < 0.4) || (maxSimilarity < 0.6 && newTags.length > 0);
+        
+        if (isNewBranch && newTags.length > 0) {
+          // Find what this branch led to (future chunks with similar tags)
+          const futureChunks = chunks.slice(i + 1).filter(c => 
+            c.tags && c.tags.some(t => newTags.includes(t.toLowerCase().trim()))
+          );
+          
+          const ledTo = futureChunks
+            .flatMap(c => c.tags || [])
+            .map(t => t.toLowerCase().trim())
+            .filter(tag => !newTags.includes(tag) && !currentTags.includes(tag))
+            .filter((v, i, a) => a.indexOf(v) === i)
+            .slice(0, 5);
+          
+          branchTriggers.push({
+            date: currentChunk.created_at,
+            trigger: newTags[0],
+            ledTo: ledTo.slice(0, 3)
           });
           
-          if (newTags.length > 0) {
-            // Find what this branch led to (future chunks with similar tags)
-            const futureChunks = chunks.slice(i + 1).filter(c => 
-              c.tags && c.tags.some(t => newTags.includes(t))
-            );
-            
-            const ledTo = futureChunks
-              .flatMap(c => c.tags || [])
-              .filter(tag => !newTags.includes(tag))
-              .filter((v, i, a) => a.indexOf(v) === i)
-              .slice(0, 5);
-            
-            branchTriggers.push({
-              date: currentChunk.created_at,
-              trigger: newTags[0],
-              ledTo: ledTo.slice(0, 3)
-            });
-            
-            console.log(`[Timeline] Branch trigger detected: ${newTags[0]} at ${currentChunk.created_at}`);
-          }
+          console.log(`[Timeline] Branch trigger detected: ${newTags[0]} at ${currentChunk.created_at}`);
         }
+        
+        // Update seen tags
+        currentTags.forEach(tag => allSeenTags.add(tag));
         
         processedChunks.push({
           ...currentChunk,
-          embedding: currentEmbedding
+          tags: currentTags
         });
       } catch (chunkError) {
         console.warn(`[Timeline] Error processing chunk ${currentChunk.chunk_id}:`, chunkError.message);

@@ -158,82 +158,41 @@ async function authenticate(req, res, next) {
   }
 }
 
-// POST /api/timeline/upload - Upload and persist content to timeline
+// POST /api/timeline/upload - Use Smart Upload pipeline (no duplication)
 router.post('/upload', authenticate, upload.single('file'), async (req, res) => {
   try {
-    console.log(`[Timeline API] POST /upload for user: ${req.userId}`);
+    console.log(`[Timeline API] POST /upload for user: ${req.userId} - delegating to Smart Upload`);
     
-    const fileText = await extractTextFromFile(req.file);
-    const inputText = sanitizeContent(req.body.textInput || '');
-
-    const combined = sanitizeContent([fileText, inputText].filter(Boolean).join(' '));
-
-    if (!combined || combined.trim().length === 0) {
+    // Delegate to Smart Upload service (processUpload from upload.service.js)
+    // This ensures all data goes through the same pipeline
+    const { processUpload } = await import('../services/upload.service.js');
+    
+    if (!req.file && !req.body.textInput) {
       return res.status(400).json({ error: 'No file or text content provided.' });
     }
-
-    const trimmed = combined.length > 15000 ? combined.slice(0, 15000) : combined;
-
-    // Generate AI analysis
-    console.log('[Timeline API] Generating AI analysis...');
-    const analysis = await generateEnhancedAnalysis(trimmed);
-
-    // Generate file ID if file was uploaded
-    const fileId = req.file ? `file_${Date.now()}_${req.file.originalname}` : 'direct_input';
-
-    // Create memory node (stores in MongoDB, Neo4j, Pinecone)
-    console.log('[Timeline API] Creating memory node...');
-    let memory;
-    try {
-      memory = await graphService.createMemoryNode({
-        text: trimmed,
-        summary: analysis.summary,
-        tags: analysis.tags || analysis.topics || [],
-        entities: analysis.entities || [],
-        user_id: req.userId,
-        source_file_id: fileId
-      });
-      console.log(`[Timeline API] Memory created: ${memory.id}`);
-    } catch (graphError) {
-      console.warn('[Timeline API] Graph service error, storing directly in MongoDB:', graphError.message);
-      // Fallback: Store directly in MongoDB if Neo4j/Pinecone fail
-      const db = getDB();
-      
-      const chunkId = `chunk_${uuidv4()}`;
-      const timestamp = new Date().toISOString();
-      
-      const chunkDoc = {
-        chunk_id: chunkId,
-        file_id: fileId,
-        user_id: req.userId,
-        chunk_text: trimmed,
-        summary: analysis.summary,
-        tags: analysis.tags || analysis.topics || [],
-        entities: analysis.entities || [],
-        created_at: timestamp
+    
+    // If text input only, create a temporary file-like object
+    let fileToProcess = req.file;
+    if (!fileToProcess && req.body.textInput) {
+      fileToProcess = {
+        buffer: Buffer.from(req.body.textInput, 'utf-8'),
+        originalname: 'text_input.txt',
+        mimetype: 'text/plain',
+        size: Buffer.byteLength(req.body.textInput, 'utf-8')
       };
-      
-      await db.collection('chunks').insertOne(chunkDoc);
-      
-      memory = {
-        id: chunkId,
-        summary: analysis.summary,
-        tags: analysis.tags || analysis.topics || [],
-        created_at: timestamp
-      };
-      console.log(`[Timeline API] Chunk stored directly in MongoDB: ${chunkId}`);
     }
-
+    
+    if (!fileToProcess) {
+      return res.status(400).json({ error: 'No file or text content provided.' });
+    }
+    
+    // Process through Smart Upload pipeline
+    const result = await processUpload(fileToProcess, req.userId);
+    
     return res.json({
       success: true,
-      message: 'Content uploaded and saved to timeline',
-      memory: {
-        id: memory.id,
-        summary: memory.summary,
-        tags: memory.tags,
-        created_at: memory.created_at
-      },
-      analysis
+      message: 'Content uploaded and saved to timeline via Smart Upload',
+      ...result
     });
   } catch (error) {
     console.error('[Timeline API] Upload error:', error.message);

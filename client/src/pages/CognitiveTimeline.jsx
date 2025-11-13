@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
+import { useLocation } from 'react-router-dom';
 import axios from 'axios';
 import {
   Brain,
@@ -15,7 +16,8 @@ import {
   Upload,
   FileText,
   X,
-  CheckCircle
+  CheckCircle,
+  RefreshCw
 } from 'lucide-react';
 import ReactFlow, {
   Background,
@@ -32,6 +34,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 export default function CognitiveTimeline() {
   const { currentUser } = useAuth();
+  const location = useLocation();
   const [loading, setLoading] = useState(true);
   const [events, setEvents] = useState([]);
   const [topicSpikes, setTopicSpikes] = useState({});
@@ -45,12 +48,25 @@ export default function CognitiveTimeline() {
   const [uploadSuccess, setUploadSuccess] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
   const [textInput, setTextInput] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
 
+  // Load data when component mounts or user changes
   useEffect(() => {
     if (currentUser) {
       loadTimelineData();
     }
   }, [currentUser]);
+
+  // Refresh data when navigating to timeline page (after uploads)
+  useEffect(() => {
+    if (currentUser && location.pathname === '/cognitive-timeline') {
+      // Small delay to ensure any background processing is complete
+      const refreshTimer = setTimeout(() => {
+        loadTimelineData();
+      }, 500);
+      return () => clearTimeout(refreshTimer);
+    }
+  }, [location.pathname, currentUser]);
 
   const handleFileSelect = (e) => {
     const file = e.target.files[0];
@@ -100,11 +116,12 @@ export default function CognitiveTimeline() {
       setSelectedFile(null);
       setTextInput('');
       
-      // Reload timeline data after upload
+      // Reload timeline data after upload (wait for processing to complete)
+      // Smart Upload processing can take 3-5 seconds for large files
       setTimeout(() => {
         loadTimelineData();
         setUploadSuccess(false);
-      }, 2000);
+      }, 4000);
     } catch (error) {
       console.error('[Timeline Frontend] Upload error:', error);
       setError(error.response?.data?.error || 'Failed to upload content');
@@ -114,14 +131,18 @@ export default function CognitiveTimeline() {
     }
   };
 
-  const loadTimelineData = async () => {
+  const loadTimelineData = async (showRefreshing = false) => {
     if (!currentUser) {
       console.warn('[Timeline Frontend] No current user, cannot load data');
       return;
     }
 
     try {
-      setLoading(true);
+      if (showRefreshing) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
       console.log('[Timeline Frontend] Starting to load timeline data...');
       
       const token = await currentUser.getIdToken();
@@ -217,6 +238,7 @@ export default function CognitiveTimeline() {
       setError(error.response?.data?.error || error.message || 'Failed to load timeline data');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -251,12 +273,45 @@ export default function CognitiveTimeline() {
           initial={{ y: -20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ duration: 0.6 }}
+          style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}
         >
-          <h1 className="timeline-title">
-            <Brain className="title-icon" />
-            Cognitive Timeline
-          </h1>
-          <p className="timeline-subtitle">Your learning evolution visualized</p>
+          <div>
+            <h1 className="timeline-title">
+              <Brain className="title-icon" />
+              Cognitive Timeline
+            </h1>
+            <p className="timeline-subtitle">Your learning evolution visualized</p>
+          </div>
+          <button
+            onClick={() => loadTimelineData(true)}
+            disabled={refreshing || loading}
+            className="refresh-timeline-btn"
+            style={{
+              padding: '10px 20px',
+              background: refreshing || loading ? '#4b5563' : '#6366f1',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: refreshing || loading ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              fontSize: '14px',
+              fontWeight: '500'
+            }}
+          >
+            {refreshing ? (
+              <>
+                <Loader2 className="spinner-small" size={16} />
+                Refreshing...
+              </>
+            ) : (
+              <>
+                <RefreshCw size={16} />
+                Refresh
+              </>
+            )}
+          </button>
         </motion.div>
 
         {insights && (
@@ -362,20 +417,20 @@ export default function CognitiveTimeline() {
       </motion.section>
 
       <div className="timeline-sections">
-        {/* Section 1: Learning Timeline View */}
-        <TimelineView events={events} />
-
-        {/* Section 2: Topic Spike Graph */}
+        {/* Section 1: Topic Spike Graph */}
         <TopicSpikeGraph topicSpikes={topicSpikes} />
 
-        {/* Section 3: Emotion Trend Line Graph */}
+        {/* Section 2: Emotion Trend Line Graph */}
         <EmotionTrendGraph emotionTrend={emotionTrend} />
 
-        {/* Section 4: Knowledge Evolution Visualization */}
+        {/* Section 3: Knowledge Evolution Visualization */}
         <KnowledgeEvolutionGraph knowledgeEvolution={knowledgeEvolution} />
 
-        {/* Section 5: Branch Trigger Cards */}
+        {/* Section 4: Branch Trigger Cards */}
         <BranchTriggerCards branchTriggers={branchTriggers} />
+
+        {/* Section 5: Learning Timeline View (at the end) */}
+        <TimelineView events={events} />
       </div>
     </motion.div>
   );
