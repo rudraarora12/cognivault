@@ -1,0 +1,104 @@
+/* Container covering entire screen */
+.loading-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: #0a0a0f;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  z-index: 9999;
+}
+
+/* Background floating particles */
+.loading-background {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  filter: blur(1px);
+}
+
+.particle {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  background: rgba(0, 255, 255, 0.4);
+  border-radius: 50%;
+  box-shadow: 0 0 12px rgba(0, 255, 255, 0.6);
+}
+
+/* Main box in center */
+.loading-content {
+  position: relative;
+  z-index: 10;
+  text-align: center;
+  color: #bdefff;
+  font-family: 'Poppins', sans-serif;
+}
+
+/* Rotating brain/log icon */
+.loading-icon {
+  margin-bottom: 20px;
+  filter: drop-shadow(0 0 15px rgba(0, 255, 255, 0.4));
+}
+
+/* Title text */
+.loading-title {
+  font-size: 1.8rem;
+  font-weight: 600;
+  margin-bottom: 8px;
+  text-shadow: 0 0 20px rgba(0, 255, 255, 0.4);
+}
+
+/* Subtitle */
+.loading-subtitle {
+  font-size: 1rem;
+  opacity: 0.6;
+  margin-bottom: 20px;
+}
+
+/* Progress bar container */
+.progress-container {
+  width: 60%;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  margin: 0 auto;
+  position: relative;
+  overflow: hidden;
+}
+
+.progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #00ffff, #0099ff);
+  box-shadow: 0 0 12px rgba(0, 255, 255, 0.7);
+}
+
+.progress-glow {
+  position: absolute;
+  top: -6px;
+  width: 16px;
+  height: 16px;
+  background: rgba(0, 255, 255, 0.6);
+  border-radius: 50%;
+  filter: blur(6px);
+  transition: left 0.1s ease-out;
+}
+
+/* Percentage Text */
+.loading-percentage {
+  margin-top: 12px;
+  font-size: 1.2rem;
+  font-weight: 500;
+}
+
+/* Loading messages */
+.loading-message {
+  margin-top: 10px;
+  font-size: 0.95rem;
+  color: #7be8ff;
+  height: 22px;
+}

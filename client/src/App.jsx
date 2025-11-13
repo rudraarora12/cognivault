@@ -3,12 +3,14 @@ import { Route, Routes, useLocation } from "react-router-dom";
 import { AnimatePresence } from "framer-motion";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { AuthProvider } from "./contexts/AuthContext";
+import { IntroProvider, useIntro } from "./contexts/IntroContext";
 import Navbar from "./components/Navbar";
 import Footer from "./components/Footer";
 import PageLoader from "./components/PageLoader";
 import ProtectedRoute from "./components/ProtectedRoute";
 import AuthRedirect from "./components/AuthRedirect";
-import LandingPage from "./pages/LandingPage";
+
+import Home from "./pages/Home";              // ⭐ ADDED
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import Dashboard from "./pages/Dashboard";
@@ -16,8 +18,10 @@ import KnowledgeGraph from "./components/KnowledgeGraph";
 import IncognitoVault from "./pages/IncognitoVault";
 import "./styles/global.css";
 
-function App() {
+
+function AppContent() {
   const location = useLocation();
+  const { isIntroComplete } = useIntro();
   const [isLoading, setIsLoading] = useState(true);
   const hasCompletedInitialLoad = useRef(false);
 
@@ -39,17 +43,20 @@ function App() {
     return () => clearTimeout(timer);
   }, [location.pathname]);
 
+  // Hide navbar during intro animation on home page
+  const shouldShowNavbar = location.pathname !== '/' || isIntroComplete;
+
   return (
-    <ThemeProvider>
-      <AuthProvider>
-        <div className="app-shell">
-          <PageLoader isLoading={isLoading} />
-          <Navbar />
+    <div className="app-shell">
+      <PageLoader isLoading={isLoading} />
+      {shouldShowNavbar && <Navbar />}
 
           <div className="route-container">
             <AnimatePresence mode="wait">
               <Routes location={location} key={location.pathname}>
-                <Route path="/" element={<LandingPage />} />
+                {/* Home route */}
+                <Route path="/" element={<Home />} />
+
                 <Route
                   path="/login"
                   element={
@@ -66,6 +73,7 @@ function App() {
                     </AuthRedirect>
                   }
                 />
+
                 <Route
                   path="/dashboard"
                   element={
@@ -96,9 +104,19 @@ function App() {
 
           <Footer />
         </div>
+  );
+}
+
+function App() {
+  return (
+    <ThemeProvider>
+      <AuthProvider>
+        <IntroProvider>
+          <AppContent />
+        </IntroProvider>
       </AuthProvider>
     </ThemeProvider>
   );
 }
 
-export default App
+export default App;

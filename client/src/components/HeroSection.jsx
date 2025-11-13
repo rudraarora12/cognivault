@@ -43,7 +43,7 @@ export default function HeroSection() {
           <h1 className="h1 hero-title" style={{ margin: 0, animationDelay: '200ms' }}>
             Your Mind. Remembered Forever.
           </h1>
-          <p className="subtitle hero-subtitle" style={{ marginTop: 14, animationDelay: '400ms' }}>
+          <p className="subtitle hero-subtitle" style={{ margin: 0, animationDelay: '400ms' }}>
             CogniVault turns your thoughts, notes, and documents into a living, searchable memory system.
           </p>
 

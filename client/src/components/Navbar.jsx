@@ -38,6 +38,12 @@ export default function Navbar() {
               >
                 Vault
               </NavLink>
+              <NavLink
+                to="/incognito"
+                className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
+              >
+                Incognito
+              </NavLink>
               <button
                 onClick={handleLogout}
                 className="nav-link nav-button"

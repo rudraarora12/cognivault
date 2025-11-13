@@ -79,8 +79,15 @@ img, video {
 }
 
 .container {
-  width: min(1200px, 92%);
+  width: min(1400px, 92%);
   margin: 0 auto;
+  padding: 0 2rem;
+}
+
+@media (max-width: 768px) {
+  .container {
+    padding: 0 1.5rem;
+  }
 }
 
 /* Glass + glow utilities */
