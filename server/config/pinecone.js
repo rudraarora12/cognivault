@@ -15,21 +15,51 @@ export async function initPinecone() {
     }
     
     pineconeClient = new Pinecone({
-      apiKey: process.env.PINECONE_API_KEY,
-      environment: process.env.PINECONE_ENVIRONMENT || 'gcp-starter'
+      apiKey: process.env.PINECONE_API_KEY
     });
     
     const indexName = process.env.PINECONE_INDEX_NAME || 'cognivault';
+    const requiredDimension = 768; // Dimension for text-embedding-004
     
     // Check if index exists
     const indexes = await pineconeClient.listIndexes();
-    const indexExists = indexes.indexes?.some(idx => idx.name === indexName);
+    const existingIndex = indexes.indexes?.find(idx => idx.name === indexName);
     
-    if (!indexExists) {
-      console.log(`Creating Pinecone index: ${indexName}`);
+    if (existingIndex) {
+      // Check if dimension matches
+      if (existingIndex.dimension !== requiredDimension) {
+        console.log(`⚠️  Existing index has dimension ${existingIndex.dimension}, but we need ${requiredDimension}`);
+        console.log(`🗑️  Deleting old index: ${indexName}`);
+        await pineconeClient.deleteIndex(indexName);
+        
+        // Wait for deletion to complete
+        console.log('⏳ Waiting for index deletion...');
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        
+        console.log(`📦 Creating new index with dimension ${requiredDimension}`);
+        await pineconeClient.createIndex({
+          name: indexName,
+          dimension: requiredDimension,
+          metric: 'cosine',
+          spec: {
+            serverless: {
+              cloud: 'aws',
+              region: 'us-east-1'
+            }
+          }
+        });
+        
+        // Wait for creation
+        console.log('⏳ Waiting for index to be ready...');
+        await new Promise(resolve => setTimeout(resolve, 10000));
+      } else {
+        console.log(`✅ Using existing index: ${indexName} (dimension: ${requiredDimension})`);
+      }
+    } else {
+      console.log(`📦 Creating Pinecone index: ${indexName} (dimension: ${requiredDimension})`);
       await pineconeClient.createIndex({
         name: indexName,
-        dimension: 768, // Dimension for text-embedding-004
+        dimension: requiredDimension,
         metric: 'cosine',
         spec: {
           serverless: {
@@ -38,10 +68,14 @@ export async function initPinecone() {
           }
         }
       });
+      
+      // Wait for creation
+      console.log('⏳ Waiting for index to be ready...');
+      await new Promise(resolve => setTimeout(resolve, 10000));
     }
     
     index = pineconeClient.index(indexName);
-    console.log('Pinecone initialized successfully');
+    console.log('✅ Pinecone initialized successfully');
     
   } catch (error) {
     console.error('Pinecone initialization error:', error);

@@ -403,35 +403,6 @@ export async function searchNodes(query, userId, type = null) {
   }
 }
 
-// Clear all user data
-export async function clearUserData(userId) {
-  const driver = getDriver();
-  const session = driver.session();
-  const db = getDB();
-  
-  try {
-    // Clear Neo4j
-    await session.run(
-      `MATCH (n)
-       WHERE n.user_id = $userId
-       DETACH DELETE n`,
-      { userId }
-    );
-    
-    // Clear MongoDB
-    await db.collection('chunks').deleteMany({ user_id: userId });
-    await db.collection('source_files').deleteMany({ user_id: userId });
-    
-    // Note: Pinecone vectors would need to be cleared separately
-    // This is handled through metadata filtering in queries
-    
-    return { message: 'User data cleared successfully' };
-    
-  } finally {
-    await session.close();
-  }
-}
-
 // Get graph statistics
 export async function getGraphStats(userId) {
   const driver = getDriver();
@@ -473,6 +444,36 @@ export async function getGraphStats(userId) {
       total_edges: Object.values(edgeStats).reduce((a, b) => a + b, 0)
     };
     
+  } finally {
+    await session.close();
+  }
+}
+
+// Clear all data for a user
+export async function clearUserData(userId) {
+  const driver = getDriver();
+  const session = driver.session();
+  
+  try {
+    console.log(`🗑️  Deleting all nodes and relationships for user: ${userId}`);
+    
+    // Delete all nodes and their relationships for the user
+    const result = await session.run(
+      `MATCH (n)
+       WHERE n.user_id = $userId
+       DETACH DELETE n
+       RETURN count(n) as deletedCount`,
+      { userId }
+    );
+    
+    const deletedCount = result.records[0]?.get('deletedCount').toNumber() || 0;
+    console.log(`✅ Deleted ${deletedCount} nodes and their relationships`);
+    
+    return { success: true, deletedCount };
+    
+  } catch (error) {
+    console.error('Error clearing user data:', error);
+    throw error;
   } finally {
     await session.close();
   }

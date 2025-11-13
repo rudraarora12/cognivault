@@ -25,7 +25,8 @@ import {
   Layers,
   Filter,
   Eye,
-  EyeOff
+  EyeOff,
+  Trash2
 } from 'lucide-react';
 import CustomNode from './CustomNode';
 import GraphControls from './GraphControls';
@@ -77,10 +78,12 @@ const KnowledgeGraph = () => {
   const initializeMockData = async () => {
     try {
       setLoading(true);
-      addNotification('Initializing mock data...', 'info', 3000);
+      addNotification('Clearing old data and creating 5 memories...', 'info', 3000);
       
       const response = await axios.post(`${API_URL}/graph/mock/initialize`, {
-        user_id: userId
+        user_id: userId,
+        count: 5,           // Create only 5 memories instead of 10
+        clearExisting: true // Clear old data first
       });
       
       if (response.data.success) {
@@ -299,6 +302,34 @@ const KnowledgeGraph = () => {
     }
   };
 
+  // Clear all data
+  const clearAllData = async () => {
+    if (!window.confirm('Are you sure you want to clear all your data? This cannot be undone.')) {
+      return;
+    }
+    
+    try {
+      setLoading(true);
+      addNotification('Clearing all data...', 'info', 2000);
+      
+      await axios.delete(`${API_URL}/graph/clear`, {
+        params: { user_id: userId }
+      });
+      
+      setNodes([]);
+      setEdges([]);
+      setGraphStats(null);
+      setSelectedNode(null);
+      
+      addNotification('All data cleared successfully!', 'success', 3000);
+    } catch (error) {
+      console.error('Error clearing data:', error);
+      addNotification('Failed to clear data', 'error', 3000);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Initial load
   useEffect(() => {
     loadFullGraph();
@@ -348,6 +379,15 @@ const KnowledgeGraph = () => {
           >
             <Upload size={18} />
             Mock Data
+          </button>
+          
+          <button 
+            onClick={clearAllData}
+            className="action-btn danger-btn"
+            title="Clear All Data"
+          >
+            <Trash2 size={18} />
+            Clear
           </button>
           
           <button 

@@ -103,9 +103,9 @@ router.post('/edges/similarity', async (req, res) => {
 // Initialize graph with mock data
 router.post('/mock/initialize', async (req, res) => {
   try {
-    const { user_id = 'demo_user' } = req.body;
+    const { user_id = 'demo_user', count = 5, clearExisting = true } = req.body;
     
-    const result = await mockDataService.initializeMockData(user_id);
+    const result = await mockDataService.initializeMockData(user_id, count, clearExisting);
     res.json(result);
   } catch (error) {
     console.error('Error initializing mock data:', error);

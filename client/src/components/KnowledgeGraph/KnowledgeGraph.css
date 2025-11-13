@@ -50,15 +50,16 @@
   top: 20px;
   left: 20px;
   right: 20px;
-  z-index: 10;
+  z-index: 100;
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 1rem 1.5rem;
-  background: rgba(30, 41, 59, 0.9);
+  background: rgba(30, 41, 59, 0.95);
   backdrop-filter: blur(10px);
   border-radius: 12px;
-  border: 1px solid rgba(100, 116, 139, 0.2);
+  border: 1px solid rgba(100, 116, 139, 0.3);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
 }
 
 .graph-header h2 {
@@ -98,6 +99,19 @@
   background: rgba(100, 116, 139, 0.2);
   border-color: rgba(100, 116, 139, 0.4);
   color: #f1f5f9;
+  transform: translateY(-2px);
+}
+
+.action-btn.danger-btn {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #fca5a5;
+}
+
+.action-btn.danger-btn:hover {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.5);
+  color: #ef4444;
   transform: translateY(-1px);
 }
 

@@ -92,6 +92,14 @@ function AppContent() {
                   }
                 />
                 <Route
+                  path="/upload"
+                  element={
+                    <ProtectedRoute>
+                      <UploadPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
                   path="/incognito"
                   element={
                     <ProtectedRoute>

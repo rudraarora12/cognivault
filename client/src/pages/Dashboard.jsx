@@ -7,8 +7,8 @@ import "../styles/dashboard.css";
 const sidebarItems = ["Memories", "Chat", "Graph", "Timeline", "Insights", "Incognito Vault"];
 
 const cards = [
-  { title: "Recent Notes", desc: "Upload files to populate your memories.", icon: "📝" },
-  { title: "AI Insights", desc: "Summaries and connections appear here.", icon: "✨" },
+  { title: "Smart Upload", desc: "Upload and process files with AI.", icon: "📤" },
+  { title: "Recent Notes", desc: "View your uploaded memories and notes.", icon: "📝" },
   { title: "Knowledge Graph", desc: "Interactive nodes and relationships.", icon: "🕸️" },
   { title: "Cognitive Timeline", desc: "Visualize your learning evolution over time.", icon: "📈" },
   { title: "Chat with Vault", desc: "Converse with your memories in natural language.", icon: "💬" },

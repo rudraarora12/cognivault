@@ -4,9 +4,11 @@ import dotenv from 'dotenv';
 import graphRoutes from './routes/graph.routes.js';
 import incognitoRoutes from './routes/incognito.routes.js';
 import timelineRoutes from './routes/timeline.routes.js';
+import uploadRoutes from './routes/upload.routes.js';
 import { connectNeo4j } from './config/neo4j.js';
 import { connectMongoDB } from './config/mongodb.js';
 import { initPinecone } from './config/pinecone.js';
+import { initGemini } from './services/gemini.service.js';
 
 dotenv.config();
 
@@ -25,7 +27,8 @@ async function initializeServices() {
   let servicesStatus = {
     neo4j: 'disconnected',
     mongodb: 'disconnected',
-    pinecone: 'mock'
+    pinecone: 'mock',
+    gemini: 'disconnected'
   };
   
   // Connect to Neo4j (allow failure for mock mode)
@@ -55,6 +58,14 @@ async function initializeServices() {
     console.warn('⚠️  Pinecone using mock mode:', error.message);
   }
   
+  // Initialize Gemini AI
+  try {
+    initGemini();
+    servicesStatus.gemini = 'connected';
+  } catch (error) {
+    console.warn('⚠️  Gemini using mock mode:', error.message);
+  }
+  
   console.log('🎉 Services initialized (mock mode available)');
   return servicesStatus;
 }
@@ -63,6 +74,7 @@ async function initializeServices() {
 app.use('/api/graph', graphRoutes);
 app.use('/api/incognito', incognitoRoutes);
 app.use('/api/timeline', timelineRoutes);
+app.use('/api/upload', uploadRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

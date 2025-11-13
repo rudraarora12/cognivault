@@ -103,16 +103,27 @@ const mockMemories = [
 ];
 
 // Initialize mock data in the graph
-export async function initializeMockData(userId = 'demo_user') {
+export async function initializeMockData(userId = 'demo_user', count = 5, clearExisting = true) {
   try {
     console.log('🎭 Initializing mock data for user:', userId);
+    console.log(`📊 Creating ${count} memories (clearExisting: ${clearExisting})`);
+    
+    // Clear existing data if requested
+    if (clearExisting) {
+      console.log('🧹 Clearing existing data...');
+      await graphService.clearUserData(userId);
+      console.log('✅ Existing data cleared');
+    }
+    
+    // Limit count to available mock memories
+    const memoryCount = Math.min(count, mockMemories.length);
     
     // Create source files
     const sourceFileId = `source_${uuidv4()}`;
     const memories = [];
     
     // Create memory nodes
-    for (let i = 0; i < mockMemories.length; i++) {
+    for (let i = 0; i < memoryCount; i++) {
       const mockData = mockMemories[i];
       
       const memory = await graphService.createMemoryNode({
@@ -125,7 +136,7 @@ export async function initializeMockData(userId = 'demo_user') {
       });
       
       memories.push(memory);
-      console.log(`Created memory ${i + 1}/${mockMemories.length}: ${memory.id}`);
+      console.log(`Created memory ${i + 1}/${memoryCount}: ${memory.id}`);
     }
     
     // Create similarity edges for some memories
@@ -139,7 +150,7 @@ export async function initializeMockData(userId = 'demo_user') {
     
     return {
       success: true,
-      message: `Initialized ${memories.length} mock memories`,
+      message: `Initialized ${memories.length} mock memories (cleared existing: ${clearExisting})`,
       stats
     };
     
