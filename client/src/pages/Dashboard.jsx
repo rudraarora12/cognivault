@@ -21,7 +21,8 @@ import {
   BookOpen,
   File,
   FileType,
-  Zap
+  Zap,
+  Mail
 } from 'lucide-react';
 import ReactFlow, {
   Background,
@@ -33,6 +34,8 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 import '../styles/dashboard.css';
 import '../styles/premium-theme.css';
+import ImportantEmails from '../components/EmailIntegration/ImportantEmails';
+import EmailConnect from '../components/EmailIntegration/EmailConnect';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
@@ -43,6 +46,7 @@ export default function Dashboard() {
   const [refreshing, setRefreshing] = useState(false);
   const [dashboardData, setDashboardData] = useState(null);
   const [error, setError] = useState(null);
+  const [showEmailConnect, setShowEmailConnect] = useState(false);
 
   useEffect(() => {
     if (currentUser) {
@@ -208,6 +212,36 @@ export default function Dashboard() {
 
       {/* Quick Actions - Premium Design */}
       <PremiumQuickActionsCard navigate={navigate} />
+
+      {/* Email Intelligence Section - Premium Design */}
+      <motion.div
+        className="premium-glass"
+        style={{ padding: '32px', borderRadius: '24px', marginTop: '24px' }}
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6, delay: 0.9 }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+          <h3 className="premium-section-title">
+            <FileText size={24} style={{ color: 'var(--neon-indigo)' }} />
+            Email Intelligence
+          </h3>
+          <motion.button
+            className="premium-btn"
+            onClick={() => setShowEmailConnect(true)}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+          >
+            📧 Connect Email
+          </motion.button>
+        </div>
+        <ImportantEmails limit={5} />
+      </motion.div>
+
+      {/* Email Connect Modal */}
+      {showEmailConnect && (
+        <EmailConnect onClose={() => setShowEmailConnect(false)} />
+      )}
     </motion.main>
   );
 }
