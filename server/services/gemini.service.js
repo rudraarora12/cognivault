@@ -1,246 +1,178 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
-import dotenv from 'dotenv';
-
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import dotenv from "dotenv";
 dotenv.config();
 
-let genAI;
+let client;
 let textModel;
 let visionModel;
 let embeddingModel;
 
-// Initialize Gemini AI
+// Initialize Gemini AI (new API)
 export function initGemini() {
   try {
-    if (!process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY === 'mock') {
-      console.log('🔧 Running Gemini in mock mode');
+    if (!process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY === "mock") {
+      console.log("🔧 Running Gemini in mock mode");
       return initMockGemini();
     }
 
-    genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    textModel = genAI.getGenerativeModel({ model: "gemini-2.0-flash-latest" });
-    visionModel = genAI.getGenerativeModel({ model: "gemini-2.0-flash-latest" });
-    embeddingModel = genAI.getGenerativeModel({ model: "text-embedding-004" });
-    
-    console.log('✅ Gemini AI initialized');
+    client = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+
+    textModel = client.getGenerativeModel({
+      model: process.env.GEMINI_MODEL, // gemini-1.5-flash
+    });
+
+    visionModel = client.getGenerativeModel({
+      model: process.env.GEMINI_MODEL,
+    });
+
+    embeddingModel = client.getGenerativeModel({
+      model: "text-embedding-004",
+    });
+
+    console.log("✅ Gemini 1.5 initialized");
     return true;
-  } catch (error) {
-    console.error('Gemini initialization error:', error);
-    console.log('Falling back to mock mode');
+  } catch (err) {
+    console.error("Gemini init error:", err);
     return initMockGemini();
   }
 }
 
-// Mock mode for development
+// Mock mode
 function initMockGemini() {
   textModel = {
-    generateContent: async (prompt) => ({
+    generateContent: async () => ({
       response: {
-        text: () => JSON.stringify({
-          summary: "Mock summary of the content",
-          tags: ["mock-tag1", "mock-tag2"],
-          entities: [
-            { name: "MockEntity", type: "ORGANIZATION" },
-            { name: "John Doe", type: "PERSON" }
-          ],
-          relations: [
-            { subject: "MockEntity", predicate: "employs", object: "John Doe" }
-          ]
-        })
-      }
-    })
-  };
-
-  visionModel = {
-    generateContent: async (input) => ({
-      response: {
-        text: () => "Mock extracted text from image: This is sample text extracted from the uploaded image."
-      }
-    })
+        text: () =>
+          JSON.stringify({
+            summary: "Mock summary",
+            tags: ["mock"],
+            entities: [],
+            relations: [],
+          }),
+      },
+    }),
   };
 
   embeddingModel = {
-    embedContent: async (content) => ({
-      embedding: {
-        values: Array(768).fill(0).map(() => Math.random())
-      }
-    })
+    embedContent: async () => ({
+      embedding: { values: Array(768).fill(0) },
+    }),
   };
 
+  visionModel = textModel;
   return true;
 }
 
-// Generate metadata for a chunk of text
+// --------------------------
+// UPDATED GEMINI API METHODS
+// --------------------------
+
 export async function generateMetadata(text) {
   try {
-    const prompt = `Analyze the following text and provide structured metadata in JSON format.
-    
-    Text: """${text}"""
-    
-    Return a JSON object with:
-    1. summary: A concise 1-2 sentence summary
-    2. tags: An array of 3-5 relevant topic tags (lowercase, hyphenated)
-    3. entities: An array of named entities with {name, type} where type is one of: PERSON, ORGANIZATION, LOCATION, TECHNOLOGY, CONCEPT
-    4. relations: An array of semantic relations with {subject, predicate, object} format
-    
-    Example output:
-    {
-      "summary": "Discussion about AI ethics and its impact on society",
-      "tags": ["artificial-intelligence", "ethics", "technology", "society"],
-      "entities": [
-        {"name": "OpenAI", "type": "ORGANIZATION"},
-        {"name": "GPT-4", "type": "TECHNOLOGY"}
-      ],
-      "relations": [
-        {"subject": "OpenAI", "predicate": "develops", "object": "GPT-4"},
-        {"subject": "AI", "predicate": "impacts", "object": "society"}
-      ]
-    }
-    
-    Return ONLY the JSON object, no additional text.`;
+    const prompt = `
+Analyze this text and return JSON only.
+Text: """${text}"""
+Return:
+{
+  "summary": "...",
+  "tags": [...],
+  "entities": [...],
+  "relations": [...]
+}`;
 
     const result = await textModel.generateContent(prompt);
-    const response = result.response.text();
-    
-    // Parse JSON from response
-    try {
-      const jsonMatch = response.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        return JSON.parse(jsonMatch[0]);
-      }
-    } catch (parseError) {
-      console.error('Error parsing Gemini response:', parseError);
-    }
-    
-    // Fallback response
+    const raw = result.response.text();
+
+    return JSON.parse(raw);
+  } catch (err) {
+    console.error("Metadata Error:", err);
     return {
-      summary: text.substring(0, 100) + '...',
-      tags: ['unprocessed'],
+      summary: text.substring(0, 120) + "...",
+      tags: ["error-processing"],
       entities: [],
-      relations: []
-    };
-    
-  } catch (error) {
-    console.error('Error generating metadata:', error);
-    return {
-      summary: text.substring(0, 100) + '...',
-      tags: ['error-processing'],
-      entities: [],
-      relations: []
+      relations: [],
     };
   }
 }
 
-// Extract text from image using Gemini Vision
+export async function analyzeDocument(fullText, fileName) {
+  try {
+    const prompt = `
+Analyze document '${fileName}'. Return JSON only:
+{
+  "document_type": "...",
+  "main_topic": "...",
+  "key_points": [...],
+  "sentiment": "...",
+  "complexity": "...",
+  "suggested_categories": [...]
+}
+Content: """${fullText.substring(0, 3000)}..."""
+`;
+
+    const result = await textModel.generateContent(prompt);
+    return JSON.parse(result.response.text());
+  } catch (err) {
+    console.error("Analyze Document Error:", err);
+    return {
+      document_type: "document",
+      main_topic: fileName,
+      key_points: [],
+      sentiment: "neutral",
+      complexity: "intermediate",
+      suggested_categories: ["general"],
+    };
+  }
+}
+
+// Vision (works same in 1.5)
 export async function extractTextFromImage(imageBuffer, mimeType) {
   try {
-    const prompt = `Extract ALL text from this image. Include:
-    - All visible text (typed, printed, or handwritten)
-    - Text from tables, charts, or diagrams
-    - Captions, labels, and annotations
-    - Headers and footers
-    
-    If the image contains no text, say "No text found in image".
-    Return ONLY the extracted text, maintaining the original structure and formatting where possible.`;
+    const result = await visionModel.generateContent([
+      "Extract all text from this image.",
+      {
+        inlineData: {
+          data: imageBuffer.toString("base64"),
+          mimeType,
+        },
+      },
+    ]);
 
-    const image = {
-      inlineData: {
-        data: imageBuffer.toString('base64'),
-        mimeType: mimeType
-      }
-    };
-
-    const result = await visionModel.generateContent([prompt, image]);
-    const extractedText = result.response.text();
-    
-    if (extractedText === "No text found in image") {
-      return null;
-    }
-    
-    return extractedText;
-    
-  } catch (error) {
-    console.error('Error extracting text from image:', error);
+    return result.response.text();
+  } catch (err) {
+    console.error("Vision Error:", err);
     return null;
   }
 }
 
-// Generate embedding for text
+// Embeddings
 export async function generateEmbedding(text) {
   try {
-    if (!embeddingModel) {
-      // Mock mode
-      return Array(768).fill(0).map(() => Math.random());
-    }
-
     const result = await embeddingModel.embedContent(text);
     return result.embedding.values;
-    
-  } catch (error) {
-    console.error('Error generating embedding:', error);
-    // Return mock embedding on error
-    return Array(768).fill(0).map(() => Math.random());
+  } catch (err) {
+    console.error("Embedding Error:", err);
+    return Array(768).fill(0);
   }
 }
 
-// Analyze document for comprehensive insights
-export async function analyzeDocument(fullText, fileName) {
+// Simple text generation (for email classifier, etc.)
+export async function generateText(prompt) {
   try {
-    const prompt = `Analyze this document and provide comprehensive insights.
-    
-    Document name: ${fileName}
-    Content: """${fullText.substring(0, 3000)}..."""
-    
-    Provide a JSON response with:
-    1. document_type: The type of document (e.g., "research_paper", "meeting_notes", "article", "code", "report")
-    2. main_topic: The primary subject of the document
-    3. key_points: Array of 3-5 main points or takeaways
-    4. sentiment: Overall tone (positive, negative, neutral, informative, analytical)
-    5. complexity: Document complexity (beginner, intermediate, advanced)
-    6. suggested_categories: Array of 2-3 categories to classify this document
-    
-    Return ONLY the JSON object.`;
-
     const result = await textModel.generateContent(prompt);
-    const response = result.response.text();
-    
-    try {
-      const jsonMatch = response.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        return JSON.parse(jsonMatch[0]);
-      }
-    } catch (parseError) {
-      console.error('Error parsing document analysis:', parseError);
-    }
-    
-    return {
-      document_type: "general",
-      main_topic: "Unknown",
-      key_points: [],
-      sentiment: "neutral",
-      complexity: "intermediate",
-      suggested_categories: ["uncategorized"]
-    };
-    
-  } catch (error) {
-    console.error('Error analyzing document:', error);
-    // Return fallback analysis instead of null
-    return {
-      document_type: "document",
-      main_topic: fileName || "Document",
-      key_points: [`Content from ${fileName || 'uploaded file'}`],
-      sentiment: "neutral",
-      complexity: "intermediate",
-      suggested_categories: ["general", "uploaded"]
-    };
+    return result.response.text();
+  } catch (err) {
+    console.error("Generate Text Error:", err);
+    return "Error generating text";
   }
 }
 
-// Initialize on import
 initGemini();
 
 export default {
   generateMetadata,
   extractTextFromImage,
   generateEmbedding,
-  analyzeDocument
+  analyzeDocument,
+  generateText,
 };

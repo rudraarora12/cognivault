@@ -46,25 +46,38 @@ if (!getApps().length) {
   }
 }
 
-export async function verifyFirebaseToken(idToken) {
-  // If Firebase Admin is not configured, use mock mode
-  if (!firebaseAuth) {
+export async function verifyFirebaseToken(token) {
+  // In mock mode, extract user info from token if possible  
+  if (!process.env.FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID === 'mock') {
     console.warn('⚠️  Firebase Admin not configured - accepting token without verification (mock mode)');
-    return {
-      uid: 'demo_user',
-      email: 'demo@example.com',
-      mock: true
-    };
+    if (token) {
+      try {
+        // Try to decode the token to get user info
+        const tokenParts = token.split('.');
+        if (tokenParts.length === 3) {
+          const payload = JSON.parse(Buffer.from(tokenParts[1], 'base64').toString());
+          return { 
+            uid: payload.user_id || payload.uid || payload.sub || 'demo_user', 
+            email: payload.email || 'demo@example.com',
+            name: payload.name || payload.email?.split('@')[0] || 'User',
+            mock: true
+          };
+        }
+      } catch (e) {
+        // Ignore decoding errors
+      }
+    }
+    return { uid: 'demo_user', email: 'demo@example.com', mock: true };
   }
 
-  if (!idToken) {
+  if (!token) {
     const authError = new Error("Authorization token missing.");
     authError.code = "auth/missing-token";
     throw authError;
   }
 
   try {
-    return await firebaseAuth.verifyIdToken(idToken);
+    return await firebaseAuth.verifyIdToken(token);
   } catch (error) {
     const authError = new Error("Invalid or expired authorization token.");
     authError.code = "auth/invalid-token";

@@ -1,12 +1,10 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState } from 'react';
 
 const IntroContext = createContext();
 
 export function IntroProvider({ children }) {
-  const [isIntroComplete, setIsIntroComplete] = useState(() => {
-    // Check if intro was already shown
-    return sessionStorage.getItem('cogniVaultIntroShown') === 'true';
-  });
+  // Always start with intro not complete - let Home.jsx handle the session check
+  const [isIntroComplete, setIsIntroComplete] = useState(false);
 
   const markIntroComplete = () => {
     setIsIntroComplete(true);
@@ -27,4 +25,3 @@ export function useIntro() {
   }
   return context;
 }
-

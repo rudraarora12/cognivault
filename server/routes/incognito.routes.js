@@ -2,8 +2,8 @@ import { Router } from "express";
 import multer from "multer";
 import pdfParse from "pdf-parse";
 import mammoth from "mammoth";
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { verifyFirebaseToken } from "../config/firebaseAdmin.js";
+import geminiService from "../services/gemini.service.js";
 
 const router = Router();
 const upload = multer({
@@ -13,8 +13,6 @@ const upload = multer({
   },
 });
 
-const genAI = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null;
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-1.5-flash";
 
 // Temporary in-memory session storage (cleared on server restart)
 const sessionMemory = new Map();
@@ -273,89 +271,19 @@ Once your content is processed, I can give you detailed answers based on the spe
 }
 
 async function generateEnhancedAnalysis(content) {
-  if (!genAI) {
-    // Generate a helpful summary even without AI
-    const words = content.split(/\s+/).filter(w => w.length > 3);
-    const wordCount = words.length;
-    const sentences = content.split(/[.!?]+/).filter(s => s.trim().length > 10);
-    const firstFewSentences = sentences.slice(0, 3).join(". ").trim();
-    
-    const summary = firstFewSentences 
-      ? `${firstFewSentences}${firstFewSentences.endsWith('.') ? '' : '.'} This content contains approximately ${wordCount} words and covers multiple topics.`
-      : `This content has been processed successfully. It contains approximately ${wordCount} words. Key terms and concepts have been extracted for your review.`;
+  try {
+    const metadata = await geminiService.generateMetadata(content.slice(0, 15000));
     
     return {
-      summary,
-      tags: buildFallbackTags(content),
-      entities: extractBasicEntities(content),
-      topics: buildFallbackTags(content, 5),
-      relations: [],
+      summary: metadata.summary || "No summary generated.",
+      tags: Array.isArray(metadata.tags) ? metadata.tags : buildFallbackTags(content),
+      entities: Array.isArray(metadata.entities) ? metadata.entities : extractBasicEntities(content),
+      topics: Array.isArray(metadata.tags) ? metadata.tags : buildFallbackTags(content, 5),
+      relations: Array.isArray(metadata.relations) ? metadata.relations : [],
       sentiment: analyzeSentiment(content),
       wordCloud: buildWordCloud(content),
-      meta: { provider: "fallback" },
+      meta: { provider: "gemini" },
     };
-  }
-
-  const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
-
-  const prompt = `
-You are assisting in a private, non-persistent AI session. Analyze the provided content comprehensively.
-
-Return a JSON object with this exact structure:
-{
-  "summary": "<3-4 sentence summary>",
-  "tags": ["keyword1", "keyword2", "keyword3", ...],
-  "entities": [
-    {"label": "Entity Name", "type": "PERSON|ORG|LOCATION|DATE|OTHER"}
-  ],
-  "topics": ["topic1", "topic2", "topic3", ...],
-  "relations": [
-    {"from": "Entity1", "to": "Entity2", "type": "relationship type"}
-  ],
-  "sentiment": {
-    "label": "Positive|Negative|Neutral",
-    "score": 0.0-1.0
-  }
-}
-
-Content:
-${content.slice(0, 15000)}
-`.trim();
-
-  try {
-    const completion = await model.generateContent(prompt);
-    const rawText = completion?.response?.text()?.trim() || "";
-
-    const cleaned = rawText.replace(/```json|```/gi, "").trim();
-    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-    const jsonStr = jsonMatch ? jsonMatch[0] : cleaned;
-
-    try {
-      const parsed = JSON.parse(jsonStr);
-
-      return {
-        summary: parsed.summary || "No summary generated.",
-        tags: Array.isArray(parsed.tags) ? parsed.tags : buildFallbackTags(content),
-        entities: Array.isArray(parsed.entities) ? parsed.entities : extractBasicEntities(content),
-        topics: Array.isArray(parsed.topics) ? parsed.topics : buildFallbackTags(content, 5),
-        relations: Array.isArray(parsed.relations) ? parsed.relations : [],
-        sentiment: parsed.sentiment || analyzeSentiment(content),
-        wordCloud: buildWordCloud(content),
-        meta: { provider: "gemini" },
-      };
-    } catch (parseError) {
-      console.warn("Failed to parse Gemini JSON, using fallback:", parseError);
-      return {
-        summary: cleaned || "No summary generated.",
-        tags: buildFallbackTags(content),
-        entities: extractBasicEntities(content),
-        topics: buildFallbackTags(content, 5),
-        relations: [],
-        sentiment: analyzeSentiment(content),
-        wordCloud: buildWordCloud(content),
-        meta: { provider: "gemini", note: "JSON parse fallback" },
-      };
-    }
   } catch (error) {
     console.error("Gemini request failed; using fallback analysis.", error);
     
@@ -452,22 +380,6 @@ router.post("/chat", async (req, res) => {
 
     const startTime = Date.now();
     
-    // Use mock response if Gemini is not available
-    if (!genAI) {
-      const mockReply = generateMockChatResponse(message, context);
-      const duration_ms = Date.now() - startTime;
-      
-      return res.json({
-        reply: mockReply,
-        metadata: {
-          model: "mock",
-          duration_ms,
-        },
-      });
-    }
-
-    const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
-
     // Build context from session if available
     let contextText = "";
     if (context) {
@@ -480,33 +392,17 @@ router.post("/chat", async (req, res) => {
     }
 
     const chatPrompt = contextText
-      ? `
-You are an AI assistant in a private, temporary session. The user is asking about content they've uploaded.
-
-Context:
-${contextText}
-
-User question: ${message}
-
-Provide a helpful, concise response based on the context. Remember this is a temporary session - nothing is saved.
-`.trim()
-      : `
-You are an AI assistant in a private, temporary session. The user is asking a question.
-
-User question: ${message}
-
-Provide a helpful, concise response. Remember this is a temporary session - nothing is saved.
-`.trim();
+      ? `You are an AI assistant in a private, temporary session. The user is asking about content they've uploaded.\n\nContext:\n${contextText}\n\nUser question: ${message}\n\nProvide a helpful, concise response based on the context. Remember this is a temporary session - nothing is saved.`
+      : `You are an AI assistant in a private, temporary session. The user is asking a question.\n\nUser question: ${message}\n\nProvide a helpful, concise response. Remember this is a temporary session - nothing is saved.`;
 
     try {
-      const completion = await model.generateContent(chatPrompt);
-      const reply = completion?.response?.text()?.trim() || "I couldn't generate a response.";
+      const reply = await geminiService.generateText(chatPrompt);
       const duration_ms = Date.now() - startTime;
 
       return res.json({
-        reply,
+        reply: reply || "I couldn't generate a response.",
         metadata: {
-          model: GEMINI_MODEL,
+          model: "gemini",
           duration_ms,
         },
       });

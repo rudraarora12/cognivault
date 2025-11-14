@@ -1,10 +1,8 @@
 import { getDB } from '../config/mongodb.js';
 import { getDriver } from '../config/neo4j.js';
 import { getPineconeIndex } from '../config/pinecone.js';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import geminiService from './gemini.service.js';
 
-const genAI = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null;
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
 
 // Get comprehensive dashboard overview
 export async function getDashboardOverview(userId, userEmail, userName) {
@@ -363,18 +361,7 @@ function extractTagsFromFile(file, chunks) {
 
 // Helper: Generate AI insights
 async function generateAIInsights(totalUploads, topTopics, emotionalTrend, branchTriggers, graphStats) {
-  if (!genAI) {
-    // Fallback insights
-    const topTopic = topTopics[0]?.topic || 'learning';
-    const recentMood = emotionalTrend[0]?.sentiment || 'neutral';
-    const branchCount = branchTriggers.length;
-    
-    return `You've uploaded ${totalUploads} documents. Your focus is on ${topTopic}. Recent mood: ${recentMood}. ${branchCount > 0 ? `${branchCount} new knowledge branches detected.` : ''} Keep exploring!`;
-  }
-  
   try {
-    const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
-    
     const prompt = `Analyze this user's learning dashboard and provide a brief, encouraging insight (2-3 sentences).
 
 Total Uploads: ${totalUploads}
@@ -385,13 +372,16 @@ Graph Nodes: ${graphStats.totalNodes}
 
 Provide a friendly, personalized insight about their learning journey. Focus on patterns, growth, and encouragement. Return ONLY the insight text, no JSON or formatting.`;
     
-    const result = await model.generateContent(prompt);
-    return result.response.text().trim();
+    const insights = await geminiService.generateText(prompt);
+    return insights.trim();
   } catch (error) {
     console.error('[Dashboard] Error generating AI insights:', error.message);
     // Fallback
     const topTopic = topTopics[0]?.topic || 'learning';
-    return `Your learning journey shows ${totalUploads} uploads with focus on ${topTopic}. Keep exploring new topics!`;
+    const recentMood = emotionalTrend[0]?.sentiment || 'neutral';
+    const branchCount = branchTriggers.length;
+    
+    return `You've uploaded ${totalUploads} documents. Your focus is on ${topTopic}. Recent mood: ${recentMood}. ${branchCount > 0 ? `${branchCount} new knowledge branches detected.` : ''} Keep exploring!`;
   }
 }
 

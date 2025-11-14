@@ -1,25 +1,12 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import geminiService from './gemini.service.js';
 import dotenv from 'dotenv';
 
 dotenv.config();
 
-let genAI;
-
-// Initialize Gemini if API key is available
-if (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'mock') {
-  genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-}
-
 // Generate embedding for text
 export async function generateEmbedding(text) {
-  if (!genAI) {
-    return generateMockEmbedding(text);
-  }
-  
   try {
-    const model = genAI.getGenerativeModel({ model: 'text-embedding-004' });
-    const result = await model.embedContent(text);
-    return result.embedding.values;
+    return await geminiService.generateEmbedding(text);
   } catch (error) {
     console.error('Error generating embedding:', error);
     return generateMockEmbedding(text);
@@ -49,13 +36,7 @@ export function generateMockEmbedding(text) {
 
 // Process text with Gemini for extraction
 export async function processTextWithAI(text, type = 'summary') {
-  if (!genAI) {
-    return generateMockProcessing(text, type);
-  }
-  
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
-    
     let prompt;
     switch (type) {
       case 'summary':
@@ -71,8 +52,7 @@ export async function processTextWithAI(text, type = 'summary') {
         prompt = text;
     }
     
-    const result = await model.generateContent(prompt);
-    const response = result.response.text();
+    const response = await geminiService.generateText(prompt);
     
     if (type === 'tags') {
       return response.split(',').map(tag => tag.trim());

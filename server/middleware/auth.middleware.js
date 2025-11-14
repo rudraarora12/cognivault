@@ -51,9 +51,27 @@ try {
 export async function authenticateUser(req, res, next) {
   const authHeader = req.headers.authorization;
   
-  // In mock mode, always allow access
+  // Extract token
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  
+  // In mock mode, extract user info from token if possible
   if (!process.env.FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID === 'mock') {
-    req.user = { uid: 'demo_user', email: 'demo@example.com' };
+    if (token) {
+      try {
+        // Try to decode the token to get user info
+        const tokenParts = token.split('.');
+        if (tokenParts.length === 3) {
+          const payload = JSON.parse(Buffer.from(tokenParts[1], 'base64').toString());
+          req.user = { uid: payload.user_id || payload.uid || 'demo_user', email: payload.email || 'demo@example.com' };
+        } else {
+          req.user = { uid: 'demo_user', email: 'demo@example.com' };
+        }
+      } catch (e) {
+        req.user = { uid: 'demo_user', email: 'demo@example.com' };
+      }
+    } else {
+      req.user = { uid: 'demo_user', email: 'demo@example.com' };
+    }
     return next();
   }
   
@@ -62,8 +80,6 @@ export async function authenticateUser(req, res, next) {
     req.user = { uid: 'demo_user', email: 'demo@example.com' };
     return next();
   }
-  
-  const token = authHeader.split('Bearer ')[1];
   
   try {
     const decodedToken = await firebaseAdmin.auth().verifyIdToken(token);

@@ -1,11 +1,8 @@
 import { getDB } from '../config/mongodb.js';
 import { getDriver } from '../config/neo4j.js';
 import { getPineconeIndex } from '../config/pinecone.js';
-import { generateEmbedding } from './gemini.service.js';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import geminiService from './gemini.service.js';
 
-const genAI = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null;
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
 
 // Get chronological learning events from source_files and chunks
 export async function getTimelineEvents(userId) {
@@ -202,7 +199,30 @@ export async function getEmotionTrend(userId) {
 async function analyzeSentiment(text, summary = '') {
   const content = summary || text.substring(0, 1000);
   
-  if (!genAI) {
+  try {
+    const prompt = `Analyze the sentiment of this text. Return ONLY a JSON object with this exact structure:
+{
+  "label": "positive|negative|neutral",
+  "score": 0.0-1.0
+}
+
+Text: ${content.substring(0, 500)}`;
+    
+    const response = await geminiService.generateText(prompt);
+    
+    // Extract JSON from response
+    const jsonMatch = response.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      return {
+        label: parsed.label || 'neutral',
+        score: parsed.score || 0.5
+      };
+    }
+    
+    return { label: 'neutral', score: 0.5 };
+  } catch (error) {
+    console.error('Error analyzing sentiment:', error);
     // Fallback: simple keyword-based sentiment
     const positiveWords = ['good', 'great', 'excellent', 'amazing', 'wonderful', 'positive', 'success', 'achievement', 'learn', 'understand', 'insight'];
     const negativeWords = ['bad', 'difficult', 'problem', 'challenge', 'stress', 'confusion', 'error', 'fail', 'hard'];
@@ -218,35 +238,6 @@ async function analyzeSentiment(text, summary = '') {
     } else {
       return { label: 'neutral', score: 0.5 };
     }
-  }
-  
-  try {
-    const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
-    const prompt = `Analyze the sentiment of this text. Return ONLY a JSON object with this exact structure:
-{
-  "label": "positive|negative|neutral",
-  "score": 0.0-1.0
-}
-
-Text: ${content.substring(0, 500)}`;
-    
-    const result = await model.generateContent(prompt);
-    const response = result.response.text().trim();
-    
-    // Extract JSON from response
-    const jsonMatch = response.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
-      return {
-        label: parsed.label || 'neutral',
-        score: parsed.score || 0.5
-      };
-    }
-    
-    return { label: 'neutral', score: 0.5 };
-  } catch (error) {
-    console.error('Error analyzing sentiment:', error);
-    return { label: 'neutral', score: 0.5 };
   }
 }
 
@@ -629,8 +620,27 @@ function cosineSimilarity(vecA, vecB) {
 export async function generateInsights(userId, events, topicSpikes, emotionTrend, knowledgeEvolution) {
   console.log(`[Timeline] Generating insights for user: ${userId}`);
   
-  if (!genAI) {
-    console.log('[Timeline] Gemini not available, using fallback insights');
+  try {
+    const prompt = `Analyze this user's learning timeline data and provide 2-3 insightful observations about their learning evolution. Be concise and encouraging.
+
+Events: ${events.length} total learning events
+Topic Spikes: ${JSON.stringify(topicSpikes).substring(0, 500)}
+Emotion Trend: ${emotionTrend.length} sentiment data points
+Knowledge Evolution: ${knowledgeEvolution.nodes.length} topics, ${knowledgeEvolution.newBranches.length} new branches
+
+Provide insights in a friendly, encouraging tone. Focus on:
+- Learning patterns
+- Topic evolution
+- Emotional journey
+- Knowledge growth
+
+Return ONLY the insights text, no JSON or formatting.`;
+    
+    const insights = await geminiService.generateText(prompt);
+    console.log('[Timeline] AI insights generated successfully');
+    return insights.trim();
+  } catch (error) {
+    console.error('[Timeline] Error generating insights:', error.message);
     // Fallback insights
     const totalEvents = events.length;
     const allTopics = Object.values(topicSpikes).reduce((acc, month) => {
@@ -650,37 +660,6 @@ export async function generateInsights(userId, events, topicSpikes, emotionTrend
       : 'Start uploading content to see your learning journey unfold!';
     
     return insight;
-  }
-  
-  try {
-    const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
-    
-    const prompt = `Analyze this user's learning timeline data and provide 2-3 insightful observations about their learning evolution. Be concise and encouraging.
-
-Events: ${events.length} total learning events
-Topic Spikes: ${JSON.stringify(topicSpikes).substring(0, 500)}
-Emotion Trend: ${emotionTrend.length} sentiment data points
-Knowledge Evolution: ${knowledgeEvolution.nodes.length} topics, ${knowledgeEvolution.newBranches.length} new branches
-
-Provide insights in a friendly, encouraging tone. Focus on:
-- Learning patterns
-- Topic evolution
-- Emotional journey
-- Knowledge growth
-
-Return ONLY the insights text, no JSON or formatting.`;
-    
-    const result = await model.generateContent(prompt);
-    const insights = result.response.text().trim();
-    console.log('[Timeline] AI insights generated successfully');
-    return insights;
-  } catch (error) {
-    console.error('[Timeline] Error generating insights:', error.message);
-    // Fallback
-    const totalEvents = events.length;
-    return totalEvents > 0 
-      ? 'Your learning journey shows continuous growth. Keep exploring new topics!'
-      : 'Start uploading content to see your learning journey unfold!';
   }
 }
 

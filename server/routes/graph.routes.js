@@ -7,7 +7,7 @@ import { getDB } from '../config/mongodb.js';
 import { v4 as uuidv4 } from 'uuid';
 import * as graphService from '../services/graph.service.js';
 import * as mockDataService from '../services/mockData.service.js';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import geminiService from '../services/gemini.service.js';
 
 const router = Router();
 
@@ -19,8 +19,6 @@ const upload = multer({
   },
 });
 
-const genAI = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null;
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
 
 // Helper function to extract text from files
 async function extractTextFromFile(file) {
@@ -57,8 +55,17 @@ function sanitizeContent(rawText) {
 
 // Helper function to generate AI analysis
 async function generateEnhancedAnalysis(content) {
-  if (!genAI) {
-    // Fallback analysis
+  try {
+    const metadata = await geminiService.generateMetadata(content.slice(0, 15000));
+    return {
+      summary: metadata.summary || 'No summary available',
+      tags: metadata.tags || [],
+      entities: metadata.entities || [],
+      topics: metadata.tags || []
+    };
+  } catch (error) {
+    console.error('AI analysis error:', error);
+    // Fallback
     const words = content.split(/\s+/).filter(w => w.length > 3);
     const sentences = content.split(/[.!?]+/).filter(s => s.trim().length > 10);
     const firstFewSentences = sentences.slice(0, 3).join('. ').trim();
@@ -67,7 +74,6 @@ async function generateEnhancedAnalysis(content) {
       ? `${firstFewSentences}${firstFewSentences.endsWith('.') ? '' : '.'}`
       : `This content has been processed successfully.`;
     
-    // Extract basic tags from content
     const commonWords = content.toLowerCase().match(/\b\w{4,}\b/g) || [];
     const wordFreq = {};
     commonWords.forEach(word => {
@@ -83,53 +89,6 @@ async function generateEnhancedAnalysis(content) {
       tags: tags.length > 0 ? tags : ['general', 'content', 'learning'],
       entities: [],
       topics: tags
-    };
-  }
-
-  const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
-
-  const prompt = `
-You are assisting in a private, persistent AI session. Analyze the provided content comprehensively.
-
-Return a JSON object with this exact structure:
-{
-  "summary": "<3-4 sentence summary>",
-  "tags": ["keyword1", "keyword2", "keyword3", ...],
-  "entities": [
-    {"name": "Entity Name", "type": "PERSON|ORG|LOCATION|DATE|OTHER"}
-  ],
-  "topics": ["topic1", "topic2", "topic3", ...]
-}
-
-Content:
-${content.slice(0, 15000)}
-`.trim();
-
-  try {
-    const result = await model.generateContent(prompt);
-    const response = result.response.text().trim();
-    
-    // Extract JSON from response
-    const jsonMatch = response.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
-      return {
-        summary: parsed.summary || 'No summary available',
-        tags: parsed.tags || [],
-        entities: parsed.entities || [],
-        topics: parsed.topics || parsed.tags || []
-      };
-    }
-    
-    throw new Error('Invalid JSON response from AI');
-  } catch (error) {
-    console.error('AI analysis error:', error);
-    // Fallback
-    return {
-      summary: content.substring(0, 200) + '...',
-      tags: ['general', 'content'],
-      entities: [],
-      topics: ['general']
     };
   }
 }

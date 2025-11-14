@@ -9,6 +9,7 @@ import Footer from "./components/Footer";
 import PageLoader from "./components/PageLoader";
 import ProtectedRoute from "./components/ProtectedRoute";
 import AuthRedirect from "./components/AuthRedirect";
+import LoadingScreen from "./components/LoadingScreen/LoadingScreen";
 
 import Home from "./pages/Home";              // ⭐ ADDED
 import Login from "./pages/Login";
@@ -25,10 +26,15 @@ function AppContent() {
   const location = useLocation();
   const { isIntroComplete } = useIntro();
   const [isLoading, setIsLoading] = useState(true);
+  const [showInitialLoading, setShowInitialLoading] = useState(true);
   const hasCompletedInitialLoad = useRef(false);
 
   useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 1000);
+    // Show loading screen for 2 seconds on initial load
+    const timer = setTimeout(() => {
+      setShowInitialLoading(false);
+      setIsLoading(false);
+    }, 2000);
 
     return () => clearTimeout(timer);
   }, []);
@@ -50,6 +56,9 @@ function AppContent() {
 
   return (
     <div className="app-shell">
+      <AnimatePresence mode="wait">
+        {showInitialLoading && <LoadingScreen key="loading" />}
+      </AnimatePresence>
       <PageLoader isLoading={isLoading} />
       {shouldShowNavbar && <Navbar />}
 
