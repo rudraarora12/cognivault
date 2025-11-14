@@ -1,34 +1,57 @@
-/* Night Theme (Default) aligned to CogniVault palette */
+/* Premium CogniVault Theme - Futuristic Minimalist */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
+/* Night Theme (Default) - Premium Palette */
 :root,
 [data-theme="night"] {
-  --bg: #0A0B1A;            /* Deep Indigo */
-  --bg-2: #12131F;          /* Charcoal Gray */
-  --text: #E8E9EB;          /* Muted white */
-  --muted: #A8AAB0;
-  --accent: #00E0D1;        /* Neon Cyan */
-  --accent-2: #4CE9DE;      /* Cyan lighter */
+  --bg: #0A0B1A;            /* Deep Navy */
+  --bg-2: #0F1120;          /* Elevated Surface */
+  --bg-3: #151728;          /* Higher Elevation */
+  --text: #F0F1F5;          /* Clean white with blue tint */
+  --text-secondary: #C8CAD3;
+  --muted: #8B8D98;
+  --accent: #6366F1;        /* Indigo */
+  --accent-2: #8B5CF6;      /* Electric Violet */
+  --accent-3: #14B8A6;      /* Teal Neon */
   --accent-magenta: #FF5F9E;
   --accent-purple: #9B8CFF;
-  --glass-bg: rgba(255, 255, 255, 0.06);
-  --glass-stroke: rgba(255, 255, 255, 0.10);
+  --neon-indigo: #6366F1;
+  --neon-violet: #8B5CF6;
+  --neon-teal: #14B8A6;
+  --glass-bg: rgba(15, 23, 42, 0.7);
+  --glass-bg-light: rgba(30, 41, 59, 0.5);
+  --glass-stroke: rgba(99, 102, 241, 0.2);
+  --glass-stroke-glow: rgba(139, 92, 246, 0.3);
   --shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
-  --glow: rgba(0, 224, 209, 0.18);
+  --shadow-premium: 0 24px 64px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(99, 102, 241, 0.1);
+  --glow: rgba(99, 102, 241, 0.25);
+  --glow-soft: 0 0 30px rgba(99, 102, 241, 0.15);
 }
 
-/* Day Theme aligned to palette */
+/* Day Theme - Premium Palette */
 [data-theme="day"] {
-  --bg: #F6F7FA;
-  --bg-2: #EDEFF4;
-  --text: #12131F;
-  --muted: #4C5165;
-  --accent: #00E0D1;
-  --accent-2: #39E9DC;
+  --bg: #FAFBFC;
+  --bg-2: #F4F6F8;
+  --bg-3: #FFFFFF;
+  --text: #0F172A;
+  --text-secondary: #475569;
+  --text-muted: #94A3B8;
+  --accent: #6366F1;
+  --accent-2: #8B5CF6;
+  --accent-3: #14B8A6;
   --accent-magenta: #FF5F9E;
-  --accent-purple: #7E6BFF;
-  --glass-bg: rgba(255, 255, 255, 0.7);
-  --glass-stroke: rgba(0, 0, 0, 0.08);
+  --accent-purple: #9B8CFF;
+  --neon-indigo: #6366F1;
+  --neon-violet: #8B5CF6;
+  --neon-teal: #14B8A6;
+  --glass-bg: rgba(255, 255, 255, 0.8);
+  --glass-bg-light: rgba(255, 255, 255, 0.6);
+  --glass-stroke: rgba(99, 102, 241, 0.15);
+  --glass-stroke-glow: rgba(139, 92, 246, 0.25);
   --shadow: 0 14px 40px rgba(0, 0, 0, 0.12);
-  --glow: rgba(0, 224, 209, 0.16);
+  --shadow-premium: 0 20px 60px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(99, 102, 241, 0.08);
+  --glow: rgba(99, 102, 241, 0.2);
+  --glow-soft: 0 0 30px rgba(99, 102, 241, 0.1);
 }
 
 * {
@@ -45,7 +68,11 @@ html {
 
 body {
   margin: 0;
-  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica Neue, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  letter-spacing: -0.01em;
   color: var(--text);
   background: var(--bg-gradient);
   background-attachment: fixed;
@@ -54,18 +81,18 @@ body {
 
 [data-theme="night"] body {
   background:
-    radial-gradient(1200px 700px at 20% 0%, rgba(0, 224, 209, 0.10), transparent 60%),
-    radial-gradient(900px 600px at 80% 10%, rgba(255, 95, 158, 0.06), transparent 60%),
-    radial-gradient(900px 600px at 10% 40%, rgba(155, 140, 255, 0.06), transparent 60%),
-    linear-gradient(180deg, var(--bg), var(--bg-2));
+    radial-gradient(1400px 800px at 15% 0%, rgba(99, 102, 241, 0.08), transparent 65%),
+    radial-gradient(1000px 700px at 85% 10%, rgba(139, 92, 246, 0.06), transparent 60%),
+    radial-gradient(1000px 700px at 5% 50%, rgba(20, 184, 166, 0.05), transparent 60%),
+    linear-gradient(180deg, var(--bg) 0%, var(--bg-2) 100%);
 }
 
 [data-theme="day"] body {
   background:
-    radial-gradient(1200px 700px at 20% 0%, rgba(0, 224, 209, 0.08), transparent 60%),
-    radial-gradient(900px 600px at 80% 10%, rgba(255, 95, 158, 0.05), transparent 60%),
-    radial-gradient(900px 600px at 10% 40%, rgba(126, 107, 255, 0.05), transparent 60%),
-    linear-gradient(180deg, var(--bg), var(--bg-2));
+    radial-gradient(1400px 800px at 15% 0%, rgba(99, 102, 241, 0.06), transparent 65%),
+    radial-gradient(1000px 700px at 85% 10%, rgba(139, 92, 246, 0.04), transparent 60%),
+    radial-gradient(1000px 700px at 5% 50%, rgba(20, 184, 166, 0.03), transparent 60%),
+    linear-gradient(180deg, var(--bg) 0%, var(--bg-2) 100%);
 }
 
 a {
@@ -90,14 +117,42 @@ img, video {
   }
 }
 
-/* Glass + glow utilities */
+/* Premium Glass + Glow Utilities */
 .glass {
   background: var(--glass-bg);
-  -webkit-backdrop-filter: blur(14px);
-  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
   border: 1px solid var(--glass-stroke);
-  border-radius: 16px;
-  box-shadow: var(--shadow);
+  border-radius: 20px;
+  box-shadow: var(--shadow), var(--glow-soft);
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.glass::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 20px;
+  padding: 1px;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.3), rgba(139, 92, 246, 0.2), rgba(20, 184, 166, 0.3));
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  pointer-events: none;
+}
+
+.glass:hover::before {
+  opacity: 0.4;
+}
+
+.glass:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-premium);
+  border-color: var(--glass-stroke-glow);
 }
 
 .neon {
