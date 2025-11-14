@@ -152,8 +152,27 @@ export function createChunks(text, chunkSize = 600, overlapSize = 120) {
 async function processChunk(chunk, fileId, userId, fileName, chunkIndex, totalChunks) {
   const chunkId = `chunk_${uuidv4()}`;
   
-  // Generate metadata using Gemini
-  const metadata = await generateMetadata(chunk.text);
+  // Generate metadata using Gemini with fallback
+  let metadata;
+  try {
+    metadata = await generateMetadata(chunk.text);
+  } catch (metaError) {
+    console.warn(`Metadata generation failed for chunk ${chunkIndex}, using fallback:`, metaError.message);
+    metadata = {
+      summary: chunk.text.substring(0, 150) + '...',
+      tags: ['document', 'uploaded'],
+      entities: [],
+      relations: []
+    };
+  }
+  
+  // Ensure metadata has all required fields
+  metadata = {
+    summary: metadata?.summary || chunk.text.substring(0, 150) + '...',
+    tags: metadata?.tags || ['document'],
+    entities: metadata?.entities || [],
+    relations: metadata?.relations || []
+  };
   
   // Generate embedding
   const embedding = await generateEmbedding(chunk.text);
@@ -162,19 +181,25 @@ async function processChunk(chunk, fileId, userId, fileName, chunkIndex, totalCh
   const pineconeIndex = getPineconeIndex();
   const vectorId = `vec_${chunkId}`;
   
-  await pineconeIndex.upsert([{
-    id: vectorId,
-    values: embedding,
-    metadata: {
-      chunk_id: chunkId,
-      file_id: fileId,
-      user_id: userId,
-      file_name: fileName,
-      chunk_index: chunkIndex,
-      summary: metadata.summary,
-      timestamp: new Date().toISOString()
+  if (pineconeIndex) {
+    try {
+      await pineconeIndex.upsert([{
+        id: vectorId,
+        values: embedding,
+        metadata: {
+          chunk_id: chunkId,
+          file_id: fileId,
+          user_id: userId,
+          file_name: fileName,
+          chunk_index: chunkIndex,
+          summary: metadata.summary,
+          timestamp: new Date().toISOString()
+        }
+      }]);
+    } catch (pineconeError) {
+      console.warn(`Pinecone storage failed for chunk ${chunkIndex}:`, pineconeError.message);
     }
-  }]);
+  }
   
   // Store in MongoDB
   const db = getDB();
@@ -209,9 +234,12 @@ async function createGraphNodes(processedChunks, fileId, fileName, userId, docum
   const driver = getDriver();
   const session = driver.session();
   
+  console.log(`[Upload Service] Creating Neo4j nodes for user: ${userId}, file: ${fileName}`);
+  
   try {
     // Create Source node for the file
     const sourceNodeId = `source_${fileId}`;
+    console.log(`[Upload Service] Creating Source node: ${sourceNodeId}`);
     await session.run(
       `MERGE (s:Source {id: $id})
        ON CREATE SET s.filename = $filename,
@@ -230,8 +258,10 @@ async function createGraphNodes(processedChunks, fileId, fileName, userId, docum
         mainTopic: documentAnalysis?.main_topic || 'Unknown'
       }
     );
+    console.log(`[Upload Service] ✅ Source node created`);
     
     // Process each chunk
+    let createdNodes = 0;
     for (const chunkData of processedChunks) {
       const memoryNodeId = `mem_${chunkData.chunkId}`;
       
@@ -247,7 +277,7 @@ async function createGraphNodes(processedChunks, fileId, fileName, userId, docum
         {
           id: memoryNodeId,
           userId: userId,
-          summary: chunkData.metadata.summary,
+          summary: chunkData.metadata?.summary || 'No summary',
           chunkId: chunkData.chunkId,
           fileId: fileId
         }
@@ -270,8 +300,11 @@ async function createGraphNodes(processedChunks, fileId, fileName, userId, docum
         }
       );
       
+      createdNodes++;
+      
       // Create Concept nodes and TAGGED_WITH relationships
-      for (const tag of chunkData.metadata.tags) {
+      const tags = chunkData.metadata?.tags || [];
+      for (const tag of tags) {
         const normalizedTag = tag.toLowerCase().trim();
         
         // Create or merge concept node based on name (which has unique constraint)
@@ -298,8 +331,11 @@ async function createGraphNodes(processedChunks, fileId, fileName, userId, docum
       }
       
       // Create Entity nodes and MENTIONS relationships
-      for (const entity of chunkData.metadata.entities) {
-        const entityId = `${entity.type}_${entity.name.toLowerCase().replace(/\s+/g, '-')}`;
+      const entities = chunkData.metadata?.entities || [];
+      for (const entity of entities) {
+        if (!entity.name) continue;
+        
+        const entityId = `${entity.type || 'GENERAL'}_${entity.name.toLowerCase().replace(/\s+/g, '-')}`;
         
         // Create or merge entity node
         await session.run(
@@ -310,7 +346,7 @@ async function createGraphNodes(processedChunks, fileId, fileName, userId, docum
             id: entityId,
             userId: userId,
             name: entity.name,
-            type: entity.type
+            type: entity.type || 'GENERAL'
           }
         );
         
@@ -326,7 +362,10 @@ async function createGraphNodes(processedChunks, fileId, fileName, userId, docum
       }
       
       // Create relation-based edges
-      for (const relation of chunkData.metadata.relations) {
+      const relations = chunkData.metadata?.relations || [];
+      for (const relation of relations) {
+        if (!relation.subject || !relation.predicate || !relation.object) continue;
+        
         // This creates custom relationships based on extracted relations
         // For simplicity, we'll store them as properties on a RELATED_TO edge
         await session.run(
@@ -346,9 +385,16 @@ async function createGraphNodes(processedChunks, fileId, fileName, userId, docum
       }
     }
     
-    // Create SIMILAR_TO edges based on vector similarity
-    await createSimilarityEdges(processedChunks, userId, session);
+    console.log(`[Upload Service] ✅ Created ${createdNodes} Memory nodes in Neo4j for user ${userId}`);
     
+    // Create SIMILAR_TO edges based on vector similarity
+    console.log(`[Upload Service] Creating similarity edges...`);
+    await createSimilarityEdges(processedChunks, userId, session);
+    console.log(`[Upload Service] ✅ Graph creation completed for ${fileName}`);
+    
+  } catch (error) {
+    console.error('[Upload Service] ❌ Error creating graph nodes:', error);
+    throw error;
   } finally {
     await session.close();
   }
@@ -417,7 +463,21 @@ export async function processUpload(file, userId) {
     console.log(`📝 Extracted ${extractedText.length} characters`);
     
     // Step 2: Analyze document
-    const documentAnalysis = await analyzeDocument(extractedText, file.originalname);
+    let documentAnalysis;
+    try {
+      documentAnalysis = await analyzeDocument(extractedText, file.originalname);
+      console.log(`📊 Document analysis completed`);
+    } catch (analysisError) {
+      console.warn(`Document analysis failed, using fallback:`, analysisError.message);
+      documentAnalysis = {
+        document_type: "document",
+        main_topic: file.originalname,
+        key_points: ["Uploaded document"],
+        sentiment: "neutral",
+        complexity: "intermediate",
+        suggested_categories: ["general"]
+      };
+    }
     
     // Step 3: Create chunks
     const chunks = createChunks(extractedText);

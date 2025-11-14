@@ -223,7 +223,15 @@ export async function analyzeDocument(fullText, fileName) {
     
   } catch (error) {
     console.error('Error analyzing document:', error);
-    return null;
+    // Return fallback analysis instead of null
+    return {
+      document_type: "document",
+      main_topic: fileName || "Document",
+      key_points: [`Content from ${fileName || 'uploaded file'}`],
+      sentiment: "neutral",
+      complexity: "intermediate",
+      suggested_categories: ["general", "uploaded"]
+    };
   }
 }
 

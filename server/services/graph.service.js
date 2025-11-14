@@ -18,6 +18,8 @@ export async function createMemoryNode({
   const session = driver.session();
   const db = getDB();
   
+  console.log(`[Graph Service] Creating memory node for user: ${user_id}`);
+  
   try {
     const memory_id = `mem_${uuidv4()}`;
     const timestamp = new Date().toISOString();
@@ -26,6 +28,7 @@ export async function createMemoryNode({
     const tx = session.beginTransaction();
     
     // 1. Create Memory node
+    console.log(`[Graph Service] Creating Memory node: ${memory_id}`);
     await tx.run(
       `CREATE (m:Memory {
         id: $id,
@@ -43,6 +46,7 @@ export async function createMemoryNode({
         char_count: text.length
       }
     );
+    console.log(`[Graph Service] Memory node created successfully`);
     
     // 2. Create/Link Concept nodes (tags)
     for (const tag of tags) {
@@ -93,9 +97,12 @@ export async function createMemoryNode({
       );
     }
     
+    console.log(`[Graph Service] Committing Neo4j transaction...`);
     await tx.commit();
+    console.log(`[Graph Service] Neo4j transaction committed successfully`);
     
     // 5. Store in MongoDB
+    console.log(`[Graph Service] Storing chunk in MongoDB...`);
     const chunkDoc = {
       chunk_id: memory_id,
       file_id: source_file_id,
@@ -109,21 +116,30 @@ export async function createMemoryNode({
     };
     
     await db.collection('chunks').insertOne(chunkDoc);
+    console.log(`[Graph Service] MongoDB chunk stored successfully`);
     
     // 6. Create embedding and store in Pinecone
+    console.log(`[Graph Service] Storing in Pinecone...`);
     const embedding = await generateMockEmbedding(text);
     const index = getPineconeIndex();
     
-    await index.upsert([{
-      id: memory_id,
-      values: embedding,
-      metadata: {
-        node_id: memory_id,
-        chunk_summary: summary,
-        user_id,
-        source_file: source_file_id || 'direct_input'
-      }
-    }]);
+    if (index) {
+      await index.upsert([{
+        id: memory_id,
+        values: embedding,
+        metadata: {
+          node_id: memory_id,
+          chunk_summary: summary,
+          user_id,
+          source_file: source_file_id || 'direct_input'
+        }
+      }]);
+      console.log(`[Graph Service] Pinecone vector stored successfully`);
+    } else {
+      console.log(`[Graph Service] Pinecone index not available, skipping vector storage`);
+    }
+    
+    console.log(`[Graph Service] ✅ Memory node ${memory_id} fully created for user ${user_id}`);
     
     return {
       id: memory_id,
@@ -133,6 +149,10 @@ export async function createMemoryNode({
       created_at: timestamp
     };
     
+  } catch (error) {
+    console.error('[Graph Service] Error creating memory node:', error);
+    console.error('[Graph Service] Error details:', error.message);
+    throw error;
   } finally {
     await session.close();
   }
@@ -258,11 +278,14 @@ export async function getUserGraph(userId, limit = 100) {
   const driver = getDriver();
   const session = driver.session();
   
+  console.log(`[Graph Service] Getting graph for user: ${userId}`);
+  
   // Ensure limit is a Neo4j integer type
   const intLimit = neo4j.int(parseInt(limit) || 100);
   
   try {
     // Get all nodes for user
+    console.log(`[Graph Service] Querying Neo4j for nodes with user_id: ${userId}`);
     const nodesResult = await session.run(
       `MATCH (n)
        WHERE n.user_id = $userId
@@ -270,6 +293,8 @@ export async function getUserGraph(userId, limit = 100) {
        LIMIT $limit`,
       { userId, limit: intLimit }
     );
+    
+    console.log(`[Graph Service] Found ${nodesResult.records.length} nodes for user ${userId}`);
     
     const nodes = nodesResult.records.map(record => {
       const node = record.get('n');

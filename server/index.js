@@ -5,7 +5,7 @@ import graphRoutes from './routes/graph.routes.js';
 import incognitoRoutes from './routes/incognito.routes.js';
 import timelineRoutes from './routes/timeline.routes.js';
 import uploadRoutes from './routes/upload.routes.js';
-import dashboardRoutes from './routes/dashboard.routes.js';
+import emailRoutes from './routes/email.routes.js';
 import { connectNeo4j } from './config/neo4j.js';
 import { connectMongoDB } from './config/mongodb.js';
 import { initPinecone } from './config/pinecone.js';
@@ -76,7 +76,11 @@ app.use('/api/graph', graphRoutes);
 app.use('/api/incognito', incognitoRoutes);
 app.use('/api/timeline', timelineRoutes);
 app.use('/api/upload', uploadRoutes);
+<<<<<<< Updated upstream
 app.use('/api/dashboard', dashboardRoutes);
+=======
+app.use('/api/email', emailRoutes);
+>>>>>>> Stashed changes
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

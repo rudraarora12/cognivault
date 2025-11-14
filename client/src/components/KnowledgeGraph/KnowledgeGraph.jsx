@@ -67,6 +67,19 @@ const KnowledgeGraph = () => {
   const [uploading, setUploading] = useState(false);
   const [uploadSuccess, setUploadSuccess] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
+
+  // Helper function to get auth token with fallback
+  const getAuthToken = async () => {
+    try {
+      if (currentUser && currentUser.getIdToken) {
+        return await currentUser.getIdToken();
+      }
+    } catch (err) {
+      console.log('Using demo token for auth');
+    }
+    return 'demo-token';
+  };
+
   const [textInput, setTextInput] = useState('');
   const [uploadError, setUploadError] = useState(null);
   const [showUploadPanel, setShowUploadPanel] = useState(false);
@@ -119,10 +132,10 @@ const KnowledgeGraph = () => {
   const loadFullGraph = async () => {
     try {
       setLoading(true);
-      const token = currentUser ? await currentUser.getIdToken() : null;
+      const token = await getAuthToken();
       const response = await axios.get(`${API_URL}/graph/full`, {
         params: { limit: 200 },
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
+        headers: { Authorization: `Bearer ${token}` }
       });
       
       const { nodes: rawNodes, edges: rawEdges } = response.data;
@@ -155,16 +168,16 @@ const KnowledgeGraph = () => {
   };
 
   // Load subgraph around a specific node
-  const loadSubgraph = async (nodeId) => {
+  const loadSubgraph = async (nodeId, depthLevel = 2) => {
     try {
       setLoading(true);
-      const token = currentUser ? await currentUser.getIdToken() : null;
+      const token = await getAuthToken();
       const response = await axios.get(`${API_URL}/graph/subgraph`, {
         params: { 
           node_id: nodeId, 
           depth: depthLevel
         },
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
+        headers: { Authorization: `Bearer ${token}` }
       });
       
       const { nodes: rawNodes, edges: rawEdges } = response.data;
@@ -253,13 +266,13 @@ const KnowledgeGraph = () => {
     
     try {
       setLoading(true);
-      const token = currentUser ? await currentUser.getIdToken() : null;
+      const token = await getAuthToken();
       const response = await axios.get(`${API_URL}/graph/search`, {
         params: {
           query: searchQuery,
           type: filterType !== 'all' ? filterType : undefined
         },
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
+        headers: { Authorization: `Bearer ${token}` }
       });
       
       const searchResults = response.data;
@@ -308,9 +321,9 @@ const KnowledgeGraph = () => {
   // Get graph statistics
   const loadGraphStats = async () => {
     try {
-      const token = currentUser ? await currentUser.getIdToken() : null;
+      const token = await getAuthToken();
       const response = await axios.get(`${API_URL}/graph/stats`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
+        headers: { Authorization: `Bearer ${token}` }
       });
       setGraphStats(response.data);
     } catch (error) {
@@ -328,8 +341,10 @@ const KnowledgeGraph = () => {
       setLoading(true);
       addNotification('Clearing all data...', 'info', 2000);
       
+      const token = await getAuthToken();
       await axios.delete(`${API_URL}/graph/clear`, {
-        params: { user_id: userId }
+        params: { user_id: userId },
+        headers: { Authorization: `Bearer ${token}` }
       });
       
       setNodes([]);
